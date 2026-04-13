@@ -1,10 +1,10 @@
 {
-  "name": "sidereal-secops-scanner",
+  "name": "stallari-secops-scanner",
   "version": "0.1.0",
-  "description": "Prompt injection scanner for sealed Sidereal packs",
+  "description": "Prompt injection scanner for sealed Stallari packs",
   "type": "module",
   "bin": {
-    "sidereal-secops-scanner": "./dist/cli.js"
+    "stallari-secops-scanner": "./dist/cli.js"
   },
   "exports": {
     ".": "./dist/index.js"
@@ -15,7 +15,7 @@
     "lint": "tsc --noEmit"
   },
   "keywords": [
-    "sidereal",
+    "stallari",
     "security",
     "prompt-injection",
     "scanner"

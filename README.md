@@ -31,6 +31,40 @@ This scanner exists so you don't have to trust blindly:
 - **Transparent findings.** Every result includes the exact matched text, the rule that fired, and why it matters. Nothing is hidden behind a pass/fail score.
 - **Exception-driven.** When a finding is a false positive, it's suppressed with a documented justification — not silently ignored.
 
+## How it works
+
+**This scanner runs inside Stallari's certification infrastructure — not on your machine.**
+
+Sealed packs are encrypted with keys held by the Stallari security pipeline. When a publisher submits a sealed pack for certification, the pipeline decrypts the payload, runs this scanner against every skill and agent prompt inside, and produces a structured report. Packs that fail are rejected. Packs that pass receive a cryptographic certification signature that your Stallari instance verifies at install time.
+
+You don't need to run this tool yourself. You benefit from it automatically — every certified pack in the marketplace has been scanned by the rules defined in this repo. The code is open source so you can see exactly what "certified" means: which patterns are checked, at what severity thresholds, and what exceptions (if any) were granted.
+
+```
+Publisher seals pack (encrypts prompts)
+        │
+        ▼
+Stallari certification pipeline
+        │
+        ├── Decrypt with escrow key
+        ├── Run secops-scanner ← this repo
+        ├── Validate descriptor ↔ payload consistency
+        └── Sign certification if pass
+        │
+        ▼
+Certified pack published to marketplace
+        │
+        ▼
+Your Stallari instance verifies signature at install
+```
+
+### What "certified" means
+
+| Scanner result | What happens |
+|----------------|--------------|
+| **Pass** (exit 0) | No findings. Pack is eligible for certification signing. |
+| **Warn** (exit 2) | Medium or low severity findings only. Requires review and may be approved with documented exceptions. |
+| **Fail** (exit 1) | Critical or high severity findings. Pack is rejected. Publisher must remediate and resubmit. |
+
 ## Detection rules
 
 | ID | Name | Severity | What it catches |
@@ -44,27 +78,21 @@ This scanner exists so you don't have to trust blindly:
 | SINJ-007 | Excessive tool use | medium | Filesystem ops, shell execution, socket access |
 | SINJ-008 | Undeclared capabilities | low | MCP tool references not declared in the pack manifest |
 
-Rules use stable IDs (`SINJ-NNN`) for use in exception files.
+Rules use stable IDs (`SINJ-NNN`) for use in exception files and scan reports.
 
-## Usage
+## For publishers
 
-### CLI
+If you're building a sealed pack and want to pre-check your prompts before submitting for certification, you can run the scanner locally against your own decrypted payload — you have your own content, so no escrow key is needed:
 
 ```sh
-# Scan a sealed payload
+# Scan your payload before sealing
 stallari-secops-scanner scan payload.json
 
 # With manifest context (enables structural checks like SINJ-008)
 stallari-secops-scanner scan payload.json --manifest manifest.json
 
-# Suppress known-safe findings
-stallari-secops-scanner scan payload.json --exceptions exceptions.yaml
-
-# JSON output for pipeline integration
+# JSON output for CI integration
 stallari-secops-scanner scan payload.json --json
-
-# Read from stdin
-cat payload.json | stallari-secops-scanner scan --stdin
 ```
 
 ### Exit codes
@@ -75,20 +103,18 @@ cat payload.json | stallari-secops-scanner scan --stdin
 | 1 | **Fail** — critical or high severity findings |
 | 2 | **Warn** — medium or low severity findings only |
 
-### Library
+### Exceptions
 
-```typescript
-import { scanPayload, scanPrompt, RULES } from "stallari-secops-scanner";
+Exception files suppress specific rules for packs that intentionally trigger them. Include justifications — the certification team reviews these:
 
-const result = scanPayload(payload, { manifest, exceptions });
-if (result.result === "fail") {
-  // block installation
-}
+```yaml
+- rule_id: SINJ-003
+  justification: "Pack legitimately fetches from its own API endpoint"
 ```
 
 ## Payload format
 
-The scanner expects a decrypted sealed payload:
+The scanner expects a decrypted payload — the same structure you have before sealing:
 
 ```json
 {
@@ -103,16 +129,22 @@ The scanner expects a decrypted sealed payload:
 }
 ```
 
-## Exceptions
+## Library API
 
-Exception files suppress specific rules for packs that intentionally trigger them. JSON or YAML:
+For integration into CI pipelines or custom tooling:
 
-```yaml
-- rule_id: SINJ-003
-  justification: "Pack legitimately fetches from its own API endpoint"
+```typescript
+import { scanPayload, scanPrompt, RULES } from "stallari-secops-scanner";
+
+const result = scanPayload(payload, { manifest, exceptions });
+if (result.result === "fail") {
+  // block certification
+}
 ```
 
 ## Development
+
+Contributions to detection rules are welcome — especially evasion patterns we haven't covered.
 
 ```sh
 npm install
@@ -123,7 +155,7 @@ npm run lint      # type-check without emitting
 
 ## Feedback
 
-Report issues via [GitHub Issues](https://github.com/groupthink-dev/stallari-secops-scanner/issues).
+Report issues or suggest new detection rules via [GitHub Issues](https://github.com/groupthink-dev/stallari-secops-scanner/issues).
 
 ## License
 

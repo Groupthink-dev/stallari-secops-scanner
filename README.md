@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://stallari.ai">
-    <img src="https://raw.githubusercontent.com/groupthink-dev/stallari/main/assets/sidereal-icon.png" width="96" alt="Stallari">
+    <img src="assets/icon.png" width="96" alt="Stallari">
   </a>
 </p>
 

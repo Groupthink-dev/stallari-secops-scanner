@@ -4,7 +4,7 @@
   </a>
 </p>
 
-<h1 align="center">stallari-secops-scanner</h1>
+<h1 align="center">Stallari SecOps Scanner</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version 0.1.0">

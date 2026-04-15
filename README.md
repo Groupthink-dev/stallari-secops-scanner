@@ -11,13 +11,25 @@
   <img src="https://img.shields.io/badge/status-developer%20preview-orange" alt="Developer Preview">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/Node.js-22%2B-339933" alt="Node.js 22+">
+  <img src="https://img.shields.io/badge/transparency-open%20source-8B5CF6" alt="Transparency: Open Source">
 </p>
 
-> **Developer Preview** — under active development. Rule IDs are stable; rule behaviour and severity thresholds may change between releases.
+<p align="center">
+  Open-source prompt injection scanner for <a href="https://stallari.ai">Stallari</a> packs — the security gate between third-party code and your agents.
+</p>
 
-Static analysis scanner that detects prompt injection vulnerabilities in sealed [Stallari](https://stallari.ai) packs before they reach the dispatch engine.
+---
 
-Packs are third-party bundles of skills and agent prompts. A compromised pack can override agent instructions, extract system prompts, exfiltrate data, or escalate privileges. This scanner is the automated gate between pack submission and execution.
+Stallari lets you install third-party packs — bundles of skills and agent prompts that extend what your agents can do. Sealed packs encrypt their prompts to protect publisher IP, which means **you can't read what they tell your agents to do.**
+
+That's a trust problem. A compromised pack could override agent instructions, extract your system prompts, exfiltrate data from your vault, or escalate privileges — all invisible inside the seal.
+
+This scanner exists so you don't have to trust blindly:
+
+- **Open source.** Every detection rule is here. Read the patterns, challenge the logic, submit improvements.
+- **Deterministic.** Pattern-based static analysis with stable rule IDs. No opaque ML model deciding what's safe. You can reproduce every finding.
+- **Transparent findings.** Every result includes the exact matched text, the rule that fired, and why it matters. Nothing is hidden behind a pass/fail score.
+- **Exception-driven.** When a finding is a false positive, it's suppressed with a documented justification — not silently ignored.
 
 ## Detection rules
 

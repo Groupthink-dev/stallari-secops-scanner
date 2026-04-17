@@ -3,8 +3,8 @@
  * DD-120 Phase 2 — CLI entry point.
  *
  * Usage:
- *   sidereal-secops-scanner scan <payload.json> [--manifest <manifest.json>] [--exceptions <exceptions.yaml>]
- *   sidereal-secops-scanner scan --stdin [--manifest <manifest.json>]
+ *   stallari-secops-scanner scan <payload.json> [--manifest <manifest.json>] [--exceptions <exceptions.yaml>]
+ *   stallari-secops-scanner scan --stdin [--manifest <manifest.json>]
  *
  * Exit codes:
  *   0 — pass (no findings, or only excepted findings)
@@ -17,11 +17,11 @@ import { scanPayload, SCANNER_VERSION } from "./scanner.js";
 import type { ManifestContext, ScanException, SealedPayload } from "./types.js";
 
 function usage(): never {
-  console.error(`sidereal-secops-scanner v${SCANNER_VERSION}
+  console.error(`stallari-secops-scanner v${SCANNER_VERSION}
 
 Usage:
-  sidereal-secops-scanner scan <payload.json> [options]
-  sidereal-secops-scanner scan --stdin [options]
+  stallari-secops-scanner scan <payload.json> [options]
+  stallari-secops-scanner scan --stdin [options]
 
 Options:
   --manifest <file>     Manifest JSON for structural checks

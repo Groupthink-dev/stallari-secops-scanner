@@ -225,7 +225,7 @@ describe("scanPayload", () => {
   it("sets pack name from payload", () => {
     const result = scanPayload(makePayload());
     expect(result.pack).toBe("test-pack");
-    expect(result.scanner).toMatch(/^sidereal-secops-scanner\//);
+    expect(result.scanner).toMatch(/^stallari-secops-scanner\//);
   });
 
   // Exception handling

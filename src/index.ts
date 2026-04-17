@@ -1,8 +1,8 @@
 /**
- * sidereal-secops-scanner — library exports.
+ * stallari-secops-scanner — library exports.
  *
  * Usage:
- *   import { scanPayload, scanPrompt, RULES } from "sidereal-secops-scanner";
+ *   import { scanPayload, scanPrompt, RULES } from "stallari-secops-scanner";
  */
 
 export { scanPayload, scanPrompt, SCANNER_VERSION } from "./scanner.js";

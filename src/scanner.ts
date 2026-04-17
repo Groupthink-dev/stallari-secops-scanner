@@ -127,7 +127,7 @@ export function scanPayload(
 
   return {
     version: "1.0",
-    scanner: `sidereal-secops-scanner/${SCANNER_VERSION}`,
+    scanner: `stallari-secops-scanner/${SCANNER_VERSION}`,
     pack: payload.pack,
     scan_date: new Date().toISOString(),
     result,

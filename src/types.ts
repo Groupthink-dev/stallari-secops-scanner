@@ -77,3 +77,49 @@ export interface ScanResult {
   exceptions_applied: string[];
   summary: Record<Severity, number>;
 }
+
+// ── DD-147: Open pack types ─────────────────────────────────────
+
+/** Parsed open pack YAML (subset needed for scanning). */
+export interface PackYAML {
+  name: string;
+  version: string;
+  forked_from?: { name: string; version: string };
+  agents: Record<string, { prompt?: string }>;
+  skills: Array<{ name: string; prompt?: string }>;
+}
+
+/** A prompt extracted from a pack YAML. */
+export interface ExtractedPrompt {
+  text: string;
+  /** e.g. "skills.site-status" or "agents.home-operator" */
+  location: string;
+}
+
+/** Clone detection corpus entry (pre-computed trigrams). */
+export interface CorpusEntry {
+  pack_name: string;
+  location: string;
+  prompt: string;
+  trigrams: Set<string>;
+}
+
+/** Clone/threat detection finding. */
+export interface CloneFinding {
+  rule_id: string;
+  severity: Severity;
+  category: string;
+  name: string;
+  message: string;
+  location: string;
+  source_pack: string;
+  source_location: string;
+  similarity: number;
+  /** True if similarity is to a declared fork parent — informational only. */
+  suppressed: boolean;
+}
+
+/** Full scan result for open pack YAML. */
+export interface PackScanResult extends ScanResult {
+  clone_findings: CloneFinding[];
+}

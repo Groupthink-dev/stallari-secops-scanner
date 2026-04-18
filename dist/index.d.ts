@@ -9,4 +9,6 @@ export type { ScanOptions, PackScanOptions } from "./scanner.js";
 export { parsePackYAML, extractPrompts } from "./pack-parser.js";
 export { normalize, extractTrigrams, jaccardSimilarity, buildCorpusFromPacks, buildThreatCorpus, detectClones, matchThreats, MIN_PROMPT_LENGTH, THRESHOLD_HIGH, THRESHOLD_MEDIUM, THRESHOLD_THREAT, } from "./clone.js";
 export { RULES } from "./rules.js";
+export { BUNDLED_THREAT_ENTRIES, BUNDLED_THREATS_VERSION, loadBundledThreats, } from "./bundled-threats.js";
+export type { ThreatEntry } from "./bundled-threats.js";
 export type { CloneFinding, CorpusEntry, ExtractedPrompt, Finding, ManifestContext, PackScanResult, PackYAML, Rule, ScanException, ScanResult, SealedPayload, Severity, StructuralContext, } from "./types.js";

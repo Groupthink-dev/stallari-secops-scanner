@@ -17,6 +17,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { scanPayload, scanPackYAML, SCANNER_VERSION } from "./scanner.js";
 import { buildCorpusFromPacks, buildThreatCorpus } from "./clone.js";
+import { loadBundledThreats } from "./bundled-threats.js";
 import type {
   CorpusEntry,
   ManifestContext,
@@ -273,7 +274,9 @@ function mainScanPack(opts: ScanPackArgs) {
   const exceptions = readExceptions(opts.exceptionsPath);
 
   const corpus = opts.corpusDir ? loadCorpusFromDir(opts.corpusDir) : undefined;
-  const threats = opts.threatsPath ? loadThreatsFromFile(opts.threatsPath) : undefined;
+  const threats = opts.threatsPath
+    ? loadThreatsFromFile(opts.threatsPath)
+    : loadBundledThreats();
 
   const result: PackScanResult = scanPackYAML(yamlContent, {
     corpus,

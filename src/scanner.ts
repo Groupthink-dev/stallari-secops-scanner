@@ -21,7 +21,7 @@ import type {
   StructuralContext,
 } from "./types.js";
 
-export const SCANNER_VERSION = "0.2.0";
+export const SCANNER_VERSION = "0.3.0";
 
 export interface ScanOptions {
   /** Manifest context for structural checks. */

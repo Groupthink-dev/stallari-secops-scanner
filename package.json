@@ -1,6 +1,6 @@
 {
   "name": "stallari-secops-scanner",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Security scanner for Stallari packs — prompt injection, clone detection, and threat matching",
   "type": "module",
   "bin": {

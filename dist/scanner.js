@@ -7,7 +7,7 @@
 import { RULES } from "./rules.js";
 import { parsePackYAML, extractPrompts } from "./pack-parser.js";
 import { detectClones, matchThreats } from "./clone.js";
-export const SCANNER_VERSION = "0.2.0";
+export const SCANNER_VERSION = "0.3.0";
 /**
  * Scan a single prompt string against all rules.
  */

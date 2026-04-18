@@ -22,6 +22,12 @@ export {
   THRESHOLD_THREAT,
 } from "./clone.js";
 export { RULES } from "./rules.js";
+export {
+  BUNDLED_THREAT_ENTRIES,
+  BUNDLED_THREATS_VERSION,
+  loadBundledThreats,
+} from "./bundled-threats.js";
+export type { ThreatEntry } from "./bundled-threats.js";
 export type {
   CloneFinding,
   CorpusEntry,

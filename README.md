@@ -7,7 +7,7 @@
 <h1 align="center">Stallari SecOps Scanner</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.0-blue" alt="Version 0.2.0">
+  <img src="https://img.shields.io/badge/version-0.3.0-blue" alt="Version 0.3.0">
   <img src="https://img.shields.io/badge/status-developer%20preview-orange" alt="Developer Preview">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/Node.js-22%2B-339933" alt="Node.js 22+">
@@ -112,6 +112,8 @@ Clone findings from a declared `forked_from` parent are marked `suppressed: true
 
 Threat matches are never suppressed — a fork of a known jailbreak is still a jailbreak.
 
+The scanner ships with a bundled threat corpus of ~30 curated entries covering jailbreak, instruction override, system prompt extraction, data exfiltration, privilege escalation, tool abuse, and obfuscation families. The bundled corpus loads automatically — no `--threats` flag needed. Custom threat files override the bundled corpus.
+
 Rules use stable IDs (`SINJ-NNN`, `SCLN-NNN`, `STHR-NNN`) for use in exception files and scan reports.
 
 ## CLI usage
@@ -127,9 +129,9 @@ stallari-secops-scanner scan payload.json --json
 ### Scan an open pack YAML
 
 ```sh
-stallari-secops-scanner scan-pack pack.yaml
+stallari-secops-scanner scan-pack pack.yaml                          # uses bundled threat corpus
 stallari-secops-scanner scan-pack pack.yaml --corpus ./existing-packs/
-stallari-secops-scanner scan-pack pack.yaml --corpus ./existing-packs/ --threats threats.json
+stallari-secops-scanner scan-pack pack.yaml --threats custom-threats.json  # override bundled corpus
 stallari-secops-scanner scan-pack pack.yaml --json
 ```
 
@@ -160,20 +162,28 @@ import { scanPayload, scanPackYAML, RULES } from "stallari-secops-scanner";
 // Sealed pack scanning
 const result = scanPayload(payload, { manifest, exceptions });
 
-// Open pack scanning (with clone detection + threat matching)
-import { buildCorpusFromPacks, buildThreatCorpus } from "stallari-secops-scanner";
+// Open pack scanning (with bundled threat corpus)
+import { buildCorpusFromPacks, loadBundledThreats } from "stallari-secops-scanner";
 
 const corpus = buildCorpusFromPacks([
   { name: "existing-pack", yaml: existingPackYaml },
 ]);
-const threats = buildThreatCorpus([
-  { source: "jailbreak-db", label: "dan-v1", prompt: knownBadPrompt },
-]);
+const threats = loadBundledThreats(); // ~30 curated entries, pre-computed trigrams
 
 const packResult = scanPackYAML(packYaml, { corpus, threats, exceptions });
 if (packResult.result === "fail") {
   // block PR
 }
+```
+
+Custom threat corpora can be built with `buildThreatCorpus()`:
+
+```typescript
+import { buildThreatCorpus } from "stallari-secops-scanner";
+
+const customThreats = buildThreatCorpus([
+  { source: "internal-db", label: "custom-threat-1", prompt: knownBadPrompt },
+]);
 ```
 
 ## Development

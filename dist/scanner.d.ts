@@ -5,7 +5,7 @@
  * Returns structured findings with severity-based pass/fail/warn result.
  */
 import type { CorpusEntry, Finding, ManifestContext, PackScanResult, ScanException, ScanResult, SealedPayload } from "./types.js";
-export declare const SCANNER_VERSION = "0.2.0";
+export declare const SCANNER_VERSION = "0.3.0";
 export interface ScanOptions {
     /** Manifest context for structural checks. */
     manifest?: ManifestContext;

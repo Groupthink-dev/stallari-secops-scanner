@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "Bash(mkdir -p /Users/piers/src/stallari-astrolabe/assets)",
+      "Bash(cp /Users/piers/src/stallari-harness/Sources/Astrolabe/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png /Users/piers/src/stallari-astrolabe/assets/icon.png)"
+    ]
+  }
+}

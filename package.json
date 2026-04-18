@@ -1,7 +1,7 @@
 {
   "name": "stallari-secops-scanner",
-  "version": "0.1.0",
-  "description": "Prompt injection scanner for sealed Stallari packs",
+  "version": "0.2.0",
+  "description": "Security scanner for Stallari packs — prompt injection, clone detection, and threat matching",
   "type": "module",
   "bin": {
     "stallari-secops-scanner": "./dist/cli.js"
@@ -21,6 +21,9 @@
     "scanner"
   ],
   "license": "MIT",
+  "dependencies": {
+    "yaml": "^2.7.0"
+  },
   "devDependencies": {
     "@types/node": "^25.5.2",
     "typescript": "^5.7.0",

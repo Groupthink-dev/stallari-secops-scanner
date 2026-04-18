@@ -6,9 +6,14 @@
  */
 
 import { RULES } from "./rules.js";
+import { parsePackYAML, extractPrompts } from "./pack-parser.js";
+import { detectClones, matchThreats } from "./clone.js";
 import type {
+  CloneFinding,
+  CorpusEntry,
   Finding,
   ManifestContext,
+  PackScanResult,
   ScanException,
   ScanResult,
   SealedPayload,
@@ -16,7 +21,7 @@ import type {
   StructuralContext,
 } from "./types.js";
 
-export const SCANNER_VERSION = "0.1.0";
+export const SCANNER_VERSION = "0.2.0";
 
 export interface ScanOptions {
   /** Manifest context for structural checks. */
@@ -132,6 +137,98 @@ export function scanPayload(
     scan_date: new Date().toISOString(),
     result,
     findings,
+    exceptions_applied: [...new Set(exceptionsApplied)],
+    summary,
+  };
+}
+
+// ── DD-147: Open pack scanning ──────────────────────────────────
+
+export interface PackScanOptions extends ScanOptions {
+  /** Pre-built corpus of existing pack prompts for clone detection. */
+  corpus?: CorpusEntry[];
+  /** Pre-built corpus of known malicious prompts for threat matching. */
+  threats?: CorpusEntry[];
+}
+
+/**
+ * Scan an open pack YAML file.
+ *
+ * Parses the YAML, extracts all prompts, runs SINJ rules against each,
+ * and optionally runs clone detection and threat matching.
+ *
+ * Runtime-agnostic — caller provides corpus/threat data.
+ */
+export function scanPackYAML(
+  yamlContent: string,
+  options?: PackScanOptions,
+): PackScanResult {
+  const pack = parsePackYAML(yamlContent);
+  const prompts = extractPrompts(pack);
+  const allFindings: Finding[] = [];
+
+  // Run SINJ rules on each prompt (reuses existing scanPrompt)
+  for (const p of prompts) {
+    allFindings.push(...scanPrompt(p.text, p.location, options));
+  }
+
+  // Apply exceptions to SINJ findings
+  const exceptionIds = new Set(
+    (options?.exceptions ?? []).map((e) => e.rule_id),
+  );
+  const exceptionsApplied: string[] = [];
+  const findings = allFindings.filter((f) => {
+    if (exceptionIds.has(f.rule_id)) {
+      exceptionsApplied.push(f.rule_id);
+      return false;
+    }
+    return true;
+  });
+
+  // Clone detection
+  const cloneFindings: CloneFinding[] = [];
+  if (options?.corpus && options.corpus.length > 0) {
+    cloneFindings.push(...detectClones(prompts, options.corpus, pack));
+  }
+
+  // Threat matching
+  if (options?.threats && options.threats.length > 0) {
+    cloneFindings.push(...matchThreats(prompts, options.threats));
+  }
+
+  // Filter suppressed clone findings for result calculation
+  const activeCloneFindings = cloneFindings.filter((f) => !f.suppressed);
+
+  // Summarise
+  const summary: Record<Severity, number> = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+  };
+  for (const f of findings) {
+    summary[f.severity]++;
+  }
+  for (const f of activeCloneFindings) {
+    summary[f.severity]++;
+  }
+
+  // Determine result
+  let result: PackScanResult["result"] = "pass";
+  if (summary.critical > 0 || summary.high > 0) {
+    result = "fail";
+  } else if (summary.medium > 0 || summary.low > 0) {
+    result = "warn";
+  }
+
+  return {
+    version: "1.0",
+    scanner: `stallari-secops-scanner/${SCANNER_VERSION}`,
+    pack: pack.name,
+    scan_date: new Date().toISOString(),
+    result,
+    findings,
+    clone_findings: cloneFindings,
     exceptions_applied: [...new Set(exceptionsApplied)],
     summary,
   };

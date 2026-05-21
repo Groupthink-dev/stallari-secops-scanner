@@ -39,8 +39,9 @@ export function scanCatalogEntries(entries: CatalogEntry[]): CatalogScanResult {
   const summary: Record<LintSeverity, number> = { warning: 0, error: 0 };
   for (const f of findings) summary[f.severity]++;
 
-  // DD-333 Phase A: rule ships at .warning — `warn` is the worst outcome.
-  // Phase D promotion to .error wires the `fail` path automatically.
+  // DD-333 Phase D (cutover 2026-05-21): S-MCP-001 ships at .error —
+  // missing granularity → `fail`. `warn` remains the outcome for any
+  // future advisory rules registered at lower severity.
   let result: CatalogScanResult["result"] = "pass";
   if (summary.error > 0) result = "fail";
   else if (summary.warning > 0) result = "warn";

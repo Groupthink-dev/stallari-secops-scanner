@@ -11,20 +11,21 @@
  */
 import type { CatalogRule } from "./types.js";
 /**
- * S-MCP-001 — fires a `.warning` for each tool inside a plugin catalog
+ * S-MCP-001 — fires a `.error` for each tool inside a plugin catalog
  * entry's `tools[]` array that omits the `granularity:` block.
  *
- * Silent at v1 when:
+ * Silent when:
  * - Entry is not type=plugin (no MCP tools to validate)
- * - Plugin omits `tools[]` entirely (Phase A.3 first-party sweep is what
- *   introduces declared tools; omission means tools are discovered at
+ * - Plugin omits `tools[]` entirely (omission means tools are discovered at
  *   runtime via MCP list_tools — nothing for the lint to check)
  * - Tool has a `granularity:` block (well-shaped or not — AJV in
  *   stallari-plugins build-catalog.js catches malformed shapes; this rule
  *   only cares about presence/absence)
  *
- * Promoted to `.error` at DD-333 Phase D once the community grace window
- * closes.
+ * Promoted from `.warning` to `.error` at DD-333 Phase D (cutover 2026-05-21).
+ * Pairs with the schema-required gate in stallari-plugins
+ * `catalog-entry.schema.json` at pack-spec 4.0.0 — AJV blocks malformed/missing
+ * declarations at build time; this lint covers post-build catalog auditing.
  */
 export declare const S_MCP_001: CatalogRule;
 /** All registered catalog rules. */

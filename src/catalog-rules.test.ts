@@ -42,7 +42,7 @@ describe("S-MCP-001 — MCP catalog tool missing granularity", () => {
     expect(S_MCP_001.check(entry)).toEqual([]);
   });
 
-  it("fires one warning per tool missing granularity", () => {
+  it("fires one error per tool missing granularity", () => {
     const entry = plugin("bad-blade", [
       { name: "list_things" },
       { name: "get_thing", risk_class: "read_only" },
@@ -50,7 +50,7 @@ describe("S-MCP-001 — MCP catalog tool missing granularity", () => {
     const findings = S_MCP_001.check(entry);
     expect(findings).toHaveLength(2);
     expect(findings[0].rule_id).toBe("S-MCP-001");
-    expect(findings[0].severity).toBe("warning");
+    expect(findings[0].severity).toBe("error");
     expect(findings[0].path).toBe("bad-blade.tools[list_things].granularity");
     expect(findings[1].path).toBe("bad-blade.tools[get_thing].granularity");
   });
@@ -115,8 +115,8 @@ describe("S-MCP-001 — MCP catalog tool missing granularity", () => {
     expect(S_MCP_001.check(entry)).toEqual([]);
   });
 
-  it("severity is warning at Phase A (promoted to error at Phase D)", () => {
-    expect(S_MCP_001.severity).toBe("warning");
+  it("severity is error at Phase D (cutover 2026-05-21)", () => {
+    expect(S_MCP_001.severity).toBe("error");
   });
 
   it("is registered in CATALOG_RULES", () => {
@@ -159,15 +159,16 @@ describe("scanCatalogEntries", () => {
     expect(result.entries_scanned).toBe(2);
   });
 
-  it("returns warn when warnings present (no errors)", () => {
+  it("returns fail when errors present (Phase D cutover)", () => {
     const result = scanCatalogEntries([
       plugin("bad", [{ name: "t1" }, { name: "t2" }]),
       plugin("good", [
         { name: "t3", granularity: { ...goldenGranularity } },
       ]),
     ]);
-    expect(result.result).toBe("warn");
-    expect(result.summary.warning).toBe(2);
+    expect(result.result).toBe("fail");
+    expect(result.summary.error).toBe(2);
+    expect(result.summary.warning).toBe(0);
     expect(result.findings.map((f) => f.path)).toEqual([
       "bad.tools[t1].granularity",
       "bad.tools[t2].granularity",
@@ -202,7 +203,7 @@ describe("parseCatalogEntry — stallari-plugins fixtures", () => {
     expect(S_MCP_001.check(entry)).toEqual([]);
   });
 
-  it("missing-granularity → one warning per tool", () => {
+  it("missing-granularity → one error per tool (Phase D cutover)", () => {
     const raw = readFileSync(
       join(FIXTURE_DIR, "tool-missing-granularity.json"),
       "utf8",
@@ -211,7 +212,7 @@ describe("parseCatalogEntry — stallari-plugins fixtures", () => {
     expect(entry.tools?.length).toBe(2);
     const findings = S_MCP_001.check(entry);
     expect(findings).toHaveLength(2);
-    expect(findings.every((f) => f.severity === "warning")).toBe(true);
+    expect(findings.every((f) => f.severity === "error")).toBe(true);
   });
 
   it("malformed-granularity → present-but-malformed; S-MCP-001 silent", () => {

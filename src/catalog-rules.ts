@@ -19,32 +19,32 @@ import type {
 // ── DD-333: S-MCP-001 — MCP catalog tool missing granularity declaration ──
 
 /**
- * S-MCP-001 — fires a `.warning` for each tool inside a plugin catalog
+ * S-MCP-001 — fires a `.error` for each tool inside a plugin catalog
  * entry's `tools[]` array that omits the `granularity:` block.
  *
- * Silent at v1 when:
+ * Silent when:
  * - Entry is not type=plugin (no MCP tools to validate)
- * - Plugin omits `tools[]` entirely (Phase A.3 first-party sweep is what
- *   introduces declared tools; omission means tools are discovered at
+ * - Plugin omits `tools[]` entirely (omission means tools are discovered at
  *   runtime via MCP list_tools — nothing for the lint to check)
  * - Tool has a `granularity:` block (well-shaped or not — AJV in
  *   stallari-plugins build-catalog.js catches malformed shapes; this rule
  *   only cares about presence/absence)
  *
- * Promoted to `.error` at DD-333 Phase D once the community grace window
- * closes.
+ * Promoted from `.warning` to `.error` at DD-333 Phase D (cutover 2026-05-21).
+ * Pairs with the schema-required gate in stallari-plugins
+ * `catalog-entry.schema.json` at pack-spec 4.0.0 — AJV blocks malformed/missing
+ * declarations at build time; this lint covers post-build catalog auditing.
  */
 export const S_MCP_001: CatalogRule = {
   id: "S-MCP-001",
   name: "MCP catalog tool missing granularity declaration",
   category: "mcp-granularity",
-  severity: "warning",
+  severity: "error",
   description:
     "MCP plugin catalog tool entry missing `granularity:` block (DD-333). " +
-    "Assembler will infer worst-case granularity (client-side/none/unstable/" +
-    "minimal) and refuse evidentiary-level packets sourcing through this " +
-    "tool. Declare scope_filtering, field_projection, deterministic_ordering, " +
-    "and audit_surface explicitly per DD-333 — see " +
+    "Required at pack-spec 4.0.0 (Phase D cutover 2026-05-21). Declare " +
+    "scope_filtering, field_projection, deterministic_ordering, and " +
+    "audit_surface explicitly per DD-333 — see " +
     "stallari-pack-spec/docs/granularity.md.",
   appliesTo: "plugin",
   check(entry: CatalogEntry): CatalogFinding[] {
@@ -61,10 +61,10 @@ export const S_MCP_001: CatalogRule = {
           name: this.name,
           message:
             `Tool '${tool.name}' (in plugin '${entry.name}') missing ` +
-            `'granularity' block. Assembler will infer worst-case ` +
-            `(client-side/none/unstable/minimal) and refuse evidentiary-` +
-            `level packets. Declare explicitly per DD-333 — see ` +
-            `stallari-pack-spec/docs/granularity.md.`,
+            `'granularity' block. Required at pack-spec 4.0.0 — declare ` +
+            `scope_filtering, field_projection, deterministic_ordering, ` +
+            `and audit_surface per DD-333 (see ` +
+            `stallari-pack-spec/docs/granularity.md).`,
           path: `${entry.name}.tools[${tool.name}].granularity`,
         });
       }

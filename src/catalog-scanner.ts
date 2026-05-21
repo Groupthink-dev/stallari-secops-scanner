@@ -1,0 +1,57 @@
+/**
+ * DD-333 Phase A.4 — Catalog scanner.
+ *
+ * Runs registered {@link CATALOG_RULES} over a set of parsed catalog entries
+ * and aggregates findings into a {@link CatalogScanResult}.
+ */
+
+import { CATALOG_RULES } from "./catalog-rules.js";
+import type {
+  CatalogEntry,
+  CatalogFinding,
+  CatalogScanResult,
+  LintSeverity,
+} from "./types.js";
+import { SCANNER_VERSION } from "./scanner.js";
+
+/** Scan a single catalog entry against all registered catalog rules. */
+export function scanCatalogEntry(entry: CatalogEntry): CatalogFinding[] {
+  const findings: CatalogFinding[] = [];
+  for (const rule of CATALOG_RULES) {
+    if (rule.appliesTo !== "catalog-entry") {
+      // Discriminate plugin/pack — entries without an explicit type field are
+      // treated as plugin per the catalog discriminated union default.
+      const entryType = entry.type ?? "plugin";
+      if (rule.appliesTo !== entryType) continue;
+    }
+    findings.push(...rule.check(entry));
+  }
+  return findings;
+}
+
+/** Scan a list of catalog entries and aggregate findings. */
+export function scanCatalogEntries(entries: CatalogEntry[]): CatalogScanResult {
+  const findings: CatalogFinding[] = [];
+  for (const entry of entries) {
+    findings.push(...scanCatalogEntry(entry));
+  }
+
+  const summary: Record<LintSeverity, number> = { warning: 0, error: 0 };
+  for (const f of findings) summary[f.severity]++;
+
+  // DD-333 Phase A: rule ships at .warning — `warn` is the worst outcome.
+  // Phase D promotion to .error wires the `fail` path automatically.
+  let result: CatalogScanResult["result"] = "pass";
+  if (summary.error > 0) result = "fail";
+  else if (summary.warning > 0) result = "warn";
+
+  return {
+    version: "1.0",
+    scanner: `stallari-secops-scanner/${SCANNER_VERSION}`,
+    scan_date: new Date().toISOString(),
+    result,
+    entries_scanned: entries.length,
+    findings,
+    summary,
+  };
+}

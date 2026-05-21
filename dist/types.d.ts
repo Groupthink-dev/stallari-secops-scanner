@@ -1,5 +1,82 @@
 /** Severity levels for scan findings. */
 export type Severity = "critical" | "high" | "medium" | "low";
+/**
+ * Lint-style severities for catalog-rule findings (DD-333 S-MCP-001).
+ *
+ * Distinct from {@link Severity} which scores prompt-injection risk.
+ * Catalog lint rules ship at `.warning` first and may be promoted to
+ * `.error` once an ecosystem grace window elapses.
+ */
+export type LintSeverity = "warning" | "error";
+/**
+ * Per-tool granularity declaration on a catalog plugin's tools[] entry.
+ * Mirrors the JSON-schema fragment in
+ * `stallari-plugins/schemas/catalog-entry.schema.json`. All four dimensions
+ * are required when the block is present; the block as a whole is optional
+ * at pack-spec 3.x (additive).
+ */
+export interface ToolGranularity {
+    scope_filtering: "server-side" | "client-side" | "none";
+    field_projection: "per-field" | "top-level" | "none";
+    deterministic_ordering: "stable" | "unstable" | "unsorted";
+    audit_surface: "structured" | "minimal" | "none";
+}
+/** Per-tool entry inside a catalog plugin's tools[] array. */
+export interface CatalogTool {
+    name: string;
+    description?: string;
+    risk_class?: string;
+    granularity?: ToolGranularity;
+    /** Other free-form fields are tolerated; we only consume name + granularity. */
+    [key: string]: unknown;
+}
+/**
+ * Parsed catalog entry (subset). Plugins declare tools; packs do not.
+ * Schema lives in stallari-plugins; we read only the fields S-MCP-001
+ * cares about.
+ */
+export interface CatalogEntry {
+    name: string;
+    type?: "plugin" | "pack";
+    description?: string;
+    version?: string;
+    tier?: "certified" | "verified" | "community" | null;
+    tools?: CatalogTool[];
+    /** Free-form catalog metadata not consumed by lint rules. */
+    [key: string]: unknown;
+}
+/** A single finding from a catalog-rule scan. */
+export interface CatalogFinding {
+    rule_id: string;
+    severity: LintSeverity;
+    category: string;
+    name: string;
+    message: string;
+    /** JSON-path-like locator, e.g. "example-blade-mcp.tools[list_records].granularity". */
+    path: string;
+}
+/** A catalog rule (DD-333 S-MCP-001 onwards) — runs structurally over CatalogEntry. */
+export interface CatalogRule {
+    id: string;
+    name: string;
+    category: string;
+    severity: LintSeverity;
+    description: string;
+    /** Which catalog entry types this rule applies to. */
+    appliesTo: "plugin" | "pack" | "catalog-entry";
+    check: (entry: CatalogEntry) => CatalogFinding[];
+}
+/** Aggregated result of a catalog scan. */
+export interface CatalogScanResult {
+    version: string;
+    scanner: string;
+    scan_date: string;
+    /** "pass" when no error-severity findings; "warn" with warning-only findings. */
+    result: "pass" | "warn" | "fail";
+    entries_scanned: number;
+    findings: CatalogFinding[];
+    summary: Record<LintSeverity, number>;
+}
 /** A single scan rule definition. */
 export interface Rule {
     id: string;

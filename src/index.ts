@@ -22,6 +22,12 @@ export {
   THRESHOLD_THREAT,
 } from "./clone.js";
 export { RULES } from "./rules.js";
+export { CATALOG_RULES, S_MCP_001 } from "./catalog-rules.js";
+export {
+  scanCatalogEntry,
+  scanCatalogEntries,
+} from "./catalog-scanner.js";
+export { parseCatalogEntry, loadCatalogDir } from "./catalog-parser.js";
 export {
   BUNDLED_THREAT_ENTRIES,
   BUNDLED_THREATS_VERSION,
@@ -29,10 +35,16 @@ export {
 } from "./bundled-threats.js";
 export type { ThreatEntry } from "./bundled-threats.js";
 export type {
+  CatalogEntry,
+  CatalogFinding,
+  CatalogRule,
+  CatalogScanResult,
+  CatalogTool,
   CloneFinding,
   CorpusEntry,
   ExtractedPrompt,
   Finding,
+  LintSeverity,
   ManifestContext,
   PackScanResult,
   PackYAML,
@@ -42,4 +54,5 @@ export type {
   SealedPayload,
   Severity,
   StructuralContext,
+  ToolGranularity,
 } from "./types.js";

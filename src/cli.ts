@@ -18,6 +18,8 @@ import { join } from "node:path";
 import { scanPayload, scanPackYAML, SCANNER_VERSION } from "./scanner.js";
 import { buildCorpusFromPacks, buildThreatCorpus } from "./clone.js";
 import { loadBundledThreats } from "./bundled-threats.js";
+import { loadCatalogDir } from "./catalog-parser.js";
+import { scanCatalogEntries } from "./catalog-scanner.js";
 import type {
   CorpusEntry,
   ManifestContext,
@@ -33,10 +35,13 @@ Usage:
   stallari-secops-scanner scan <payload.json> [options]
   stallari-secops-scanner scan --stdin [options]
   stallari-secops-scanner scan-pack <pack.yaml> [options]
+  stallari-secops-scanner scan-catalog <dir> [options]
 
 Commands:
-  scan          Scan a sealed pack payload (JSON)
-  scan-pack     Scan an open pack YAML file
+  scan            Scan a sealed pack payload (JSON)
+  scan-pack       Scan an open pack YAML file
+  scan-catalog    Scan a stallari-plugins/plugins/tools/ catalog dir
+                  (runs DD-333 S-MCP-001 + future catalog-rule additions)
 
 Options (scan):
   --manifest <file>     Manifest JSON for structural checks
@@ -51,7 +56,9 @@ Common options:
   --json                Output raw JSON (default: human-readable)
   --help                Show this help
 
-Exit codes: 0=pass, 1=fail (critical/high), 2=warn (medium/low)`);
+Exit codes:
+  scan / scan-pack: 0=pass, 1=fail (critical/high), 2=warn (medium/low)
+  scan-catalog:     0=pass, 1=fail (any error finding), 2=warn (warning-only)`);
   return process.exit(2) as never;
 }
 
@@ -73,14 +80,44 @@ interface ScanPackArgs {
   jsonOutput: boolean;
 }
 
-function parseArgs(argv: string[]): ScanArgs | ScanPackArgs {
+interface ScanCatalogArgs {
+  command: "scan-catalog";
+  catalogDir: string;
+  jsonOutput: boolean;
+}
+
+function parseArgs(argv: string[]): ScanArgs | ScanPackArgs | ScanCatalogArgs {
   const args = argv.slice(2);
   if (args.length === 0 || args.includes("--help")) usage();
 
   const command = args[0];
-  if (command !== "scan" && command !== "scan-pack") {
+  if (
+    command !== "scan" &&
+    command !== "scan-pack" &&
+    command !== "scan-catalog"
+  ) {
     console.error(`Unknown command: ${command}`);
     usage();
+  }
+
+  if (command === "scan-catalog") {
+    let catalogDir: string | null = null;
+    let jsonOutput = false;
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] === "--json") {
+        jsonOutput = true;
+      } else if (args[i].startsWith("-")) {
+        console.error(`Unknown option: ${args[i]}`);
+        usage();
+      } else {
+        catalogDir = args[i];
+      }
+    }
+    if (!catalogDir) {
+      console.error("Missing catalog directory path");
+      usage();
+    }
+    return { command: "scan-catalog", catalogDir, jsonOutput };
   }
 
   if (command === "scan-pack") {
@@ -340,12 +377,45 @@ function mainScanPack(opts: ScanPackArgs) {
   process.exit(0);
 }
 
+function mainScanCatalog(opts: ScanCatalogArgs) {
+  const entries = loadCatalogDir(opts.catalogDir);
+  const result = scanCatalogEntries(entries);
+
+  if (opts.jsonOutput) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    const icon =
+      result.result === "pass"
+        ? "PASS"
+        : result.result === "fail"
+          ? "FAIL"
+          : "WARN";
+    console.log(
+      `\n${icon}  catalog (${result.entries_scanned} entries) — ${result.findings.length} finding(s)\n`,
+    );
+    for (const f of result.findings) {
+      const sev = f.severity.toUpperCase().padEnd(8);
+      console.log(`  ${sev} [${f.rule_id}] ${f.path}`);
+      console.log(`           ${f.message}`);
+      console.log();
+    }
+    const { warning, error } = result.summary;
+    console.log(`  Summary: ${error} error, ${warning} warning\n`);
+  }
+
+  if (result.result === "fail") process.exit(1);
+  if (result.result === "warn") process.exit(2);
+  process.exit(0);
+}
+
 function main() {
   const opts = parseArgs(process.argv);
   if (opts.command === "scan") {
     mainScan(opts);
-  } else {
+  } else if (opts.command === "scan-pack") {
     mainScanPack(opts);
+  } else {
+    mainScanCatalog(opts);
   }
 }
 

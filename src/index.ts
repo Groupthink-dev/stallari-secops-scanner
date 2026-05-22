@@ -23,6 +23,7 @@ export {
 } from "./clone.js";
 export { RULES } from "./rules.js";
 export { CATALOG_RULES, S_MCP_001, S_MCP_002 } from "./catalog-rules.js";
+export { PACK_DOMAIN_RULES, S_DOM_001 } from "./pack-domain-rules.js";
 export {
   scanCatalogEntry,
   scanCatalogEntries,
@@ -40,6 +41,7 @@ export type {
   CatalogRule,
   CatalogScanResult,
   CatalogTool,
+  DomainAccessBlock,
   CloneFinding,
   CorpusEntry,
   ExtractedPrompt,

@@ -6,18 +6,29 @@
  */
 
 import { CATALOG_RULES } from "./catalog-rules.js";
+import { PACK_DOMAIN_RULES } from "./pack-domain-rules.js";
 import type {
   CatalogEntry,
   CatalogFinding,
+  CatalogRule,
   CatalogScanResult,
   LintSeverity,
 } from "./types.js";
 import { SCANNER_VERSION } from "./scanner.js";
 
+/**
+ * All registered catalog rules — MCP granularity rules (DD-333) plus pack
+ * domain-access rules (DD-341 Phase C).
+ */
+const ALL_CATALOG_RULES: CatalogRule[] = [
+  ...CATALOG_RULES,
+  ...PACK_DOMAIN_RULES,
+];
+
 /** Scan a single catalog entry against all registered catalog rules. */
 export function scanCatalogEntry(entry: CatalogEntry): CatalogFinding[] {
   const findings: CatalogFinding[] = [];
-  for (const rule of CATALOG_RULES) {
+  for (const rule of ALL_CATALOG_RULES) {
     if (rule.appliesTo !== "catalog-entry") {
       // Discriminate plugin/pack — entries without an explicit type field are
       // treated as plugin per the catalog discriminated union default.

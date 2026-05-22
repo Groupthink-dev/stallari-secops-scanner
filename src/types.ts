@@ -20,10 +20,49 @@ export type LintSeverity = "warning" | "error";
  * at pack-spec 3.x (additive).
  */
 export interface ToolGranularity {
-  scope_filtering: "server-side" | "client-side" | "none";
+  scope_filtering: "server-side" | "client-side" | "none" | "non-conforming-explicit";
   field_projection: "per-field" | "top-level" | "none";
   deterministic_ordering: "stable" | "unstable" | "unsorted";
   audit_surface: "structured" | "minimal" | "none";
+}
+
+/**
+ * DD-333 F.1 — non-conformance rationale block on a plugin catalog entry.
+ *
+ * Authors declare this top-level block to acknowledge honest non-conformance
+ * with the granularity contract. The stallari-plugins build pipeline
+ * (`scripts/build-catalog.js`) derives `granularity.scope_filtering:
+ * "non-conforming-explicit"` for each tool listed in `affected_tools` whose
+ * own granularity block is omitted; the rationale block flows verbatim onto
+ * the catalog row for downstream consumption.
+ *
+ * Sister amendments out of scope for F.1:
+ * - [[DD-189]] — UI surfaces for informed-consent warning copy.
+ * - [[DD-301]] — memory contamination propagation when non-conforming tools
+ *   land in an `assemblySteps` chain.
+ *
+ * The cross-field invariant — every `affected_tools[i]` MUST cross-reference
+ * a real `tools[].name` — is enforced procedurally in
+ * `stallari-plugins/scripts/build-catalog.js` AND by S-MCP-002 in this
+ * scanner against post-build catalog state.
+ */
+export interface NonConformanceRationale {
+  /** Non-empty author-supplied explanation. Surfaces in UI + audit Tracks. */
+  reason: string;
+  /** Explicit acknowledgment. MUST be `true` when block present. */
+  scope_filtering_off: true;
+  /** Controlled vocabulary; non-empty. */
+  contamination_risks: Array<
+    | "memory-source-tainted"
+    | "audit-context-leak"
+    | "cross-scope-packet-bleed"
+    | "other-see-reason"
+  >;
+  /**
+   * Tool names from this entry's `tools[].name`. Cross-field invariant —
+   * every entry MUST reference an actual tool.
+   */
+  affected_tools: string[];
 }
 
 /** Per-tool entry inside a catalog plugin's tools[] array. */
@@ -39,7 +78,7 @@ export interface CatalogTool {
 /**
  * Parsed catalog entry (subset). Plugins declare tools; packs do not.
  * Schema lives in stallari-plugins; we read only the fields S-MCP-001
- * cares about.
+ * + S-MCP-002 care about.
  */
 export interface CatalogEntry {
   name: string;
@@ -48,6 +87,8 @@ export interface CatalogEntry {
   version?: string;
   tier?: "certified" | "verified" | "community" | null;
   tools?: CatalogTool[];
+  /** DD-333 F.1 — non-conformance rationale (when declared). */
+  non_conformance_rationale?: NonConformanceRationale;
   /** Free-form catalog metadata not consumed by lint rules. */
   [key: string]: unknown;
 }

@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { S_MCP_001, CATALOG_RULES } from "./catalog-rules.js";
+import { S_MCP_001, S_MCP_002, CATALOG_RULES } from "./catalog-rules.js";
 import {
   scanCatalogEntry,
   scanCatalogEntries,
@@ -121,6 +121,219 @@ describe("S-MCP-001 — MCP catalog tool missing granularity", () => {
 
   it("is registered in CATALOG_RULES", () => {
     expect(CATALOG_RULES.some((r) => r.id === "S-MCP-001")).toBe(true);
+  });
+});
+
+// ── DD-333 F.1: S-MCP-001 accept-with-rationale silence path ─────
+
+describe("S-MCP-001 — DD-333 F.1 accept-with-rationale silence", () => {
+  const validRationale = {
+    reason: "Upstream lacks scope arg; rewrite scheduled.",
+    scope_filtering_off: true as const,
+    contamination_risks: ["cross-scope-packet-bleed" as const],
+    affected_tools: ["dump_legacy"],
+  };
+
+  it("does not fire when tool lacks granularity but is listed in affected_tools", () => {
+    const entry: CatalogEntry = {
+      name: "rationale-blade",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: validRationale,
+    };
+    expect(S_MCP_001.check(entry)).toEqual([]);
+  });
+
+  it("still fires for tools without granularity and NOT in affected_tools", () => {
+    const entry: CatalogEntry = {
+      name: "mixed-rationale-blade",
+      type: "plugin",
+      tools: [
+        { name: "dump_legacy" }, // in affected_tools — silent
+        { name: "list_things" }, // NOT in affected_tools — fires
+      ] as CatalogEntry["tools"],
+      non_conformance_rationale: validRationale,
+    };
+    const findings = S_MCP_001.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].path).toBe(
+      "mixed-rationale-blade.tools[list_things].granularity",
+    );
+  });
+
+  it("silent on plugin with full granularity declarations and a rationale block", () => {
+    const entry: CatalogEntry = {
+      name: "over-declared-blade",
+      type: "plugin",
+      tools: [
+        { name: "dump_legacy", granularity: { ...goldenGranularity } },
+      ] as CatalogEntry["tools"],
+      non_conformance_rationale: {
+        ...validRationale,
+        affected_tools: ["dump_legacy"],
+      },
+    };
+    expect(S_MCP_001.check(entry)).toEqual([]);
+  });
+
+  it("message references the rationale escape hatch when firing", () => {
+    const entry: CatalogEntry = {
+      name: "no-rationale-blade",
+      type: "plugin",
+      tools: [{ name: "bare_tool" }] as CatalogEntry["tools"],
+    };
+    const findings = S_MCP_001.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toMatch(/non_conformance_rationale\.affected_tools/);
+    expect(findings[0].message).toMatch(/non-conformance-rationale\.md/);
+  });
+});
+
+// ── DD-333 F.1: S-MCP-002 NonConformanceRationaleMalformed ───────
+
+describe("S-MCP-002 — non_conformance_rationale malformed", () => {
+  const ok = {
+    reason: "Upstream lacks scope arg; rewrite scheduled.",
+    scope_filtering_off: true as const,
+    contamination_risks: ["cross-scope-packet-bleed" as const],
+    affected_tools: ["dump_legacy"],
+  };
+
+  it("silent on plugin without non_conformance_rationale", () => {
+    const entry: CatalogEntry = {
+      name: "vanilla-blade",
+      type: "plugin",
+      tools: [{ name: "list_records", granularity: { ...goldenGranularity } }] as CatalogEntry["tools"],
+    };
+    expect(S_MCP_002.check(entry)).toEqual([]);
+  });
+
+  it("silent on plugin with valid non_conformance_rationale", () => {
+    const entry: CatalogEntry = {
+      name: "rationale-blade",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: ok,
+    };
+    expect(S_MCP_002.check(entry)).toEqual([]);
+  });
+
+  it("does not fire on pack-type catalog entries", () => {
+    const entry: CatalogEntry = {
+      name: "skills-pack",
+      type: "pack",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: { ...ok, scope_filtering_off: false as unknown as true },
+    };
+    expect(S_MCP_002.check(entry)).toEqual([]);
+  });
+
+  it("fires on scope_filtering_off: false", () => {
+    const entry: CatalogEntry = {
+      name: "bad-scope-off",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: {
+        ...ok,
+        scope_filtering_off: false as unknown as true,
+      },
+    };
+    const findings = S_MCP_002.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].path).toBe(
+      "bad-scope-off.non_conformance_rationale.scope_filtering_off",
+    );
+    expect(findings[0].rule_id).toBe("S-MCP-002");
+    expect(findings[0].severity).toBe("error");
+  });
+
+  it("fires on empty contamination_risks", () => {
+    const entry: CatalogEntry = {
+      name: "empty-cont",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: { ...ok, contamination_risks: [] },
+    };
+    const findings = S_MCP_002.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].path).toBe(
+      "empty-cont.non_conformance_rationale.contamination_risks",
+    );
+  });
+
+  it("fires on missing/empty reason", () => {
+    const entry: CatalogEntry = {
+      name: "no-reason",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: { ...ok, reason: "   " },
+    };
+    const findings = S_MCP_002.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].path).toBe(
+      "no-reason.non_conformance_rationale.reason",
+    );
+  });
+
+  it("fires per mismatched name in affected_tools cross-reference", () => {
+    const entry: CatalogEntry = {
+      name: "xref-mismatch",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: {
+        ...ok,
+        affected_tools: ["dump_legacy", "nonexistent_a", "nonexistent_b"],
+      },
+    };
+    const findings = S_MCP_002.check(entry);
+    expect(findings).toHaveLength(2);
+    expect(findings.map((f) => f.path)).toEqual([
+      "xref-mismatch.non_conformance_rationale.affected_tools[nonexistent_a]",
+      "xref-mismatch.non_conformance_rationale.affected_tools[nonexistent_b]",
+    ]);
+  });
+
+  it("fires on affected_tools not being an array", () => {
+    const entry: CatalogEntry = {
+      name: "affected-not-array",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: {
+        ...ok,
+        affected_tools: "dump_legacy" as unknown as string[],
+      },
+    };
+    const findings = S_MCP_002.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].path).toBe(
+      "affected-not-array.non_conformance_rationale.affected_tools",
+    );
+  });
+
+  it("emits multiple findings when several invariants violated", () => {
+    const entry: CatalogEntry = {
+      name: "multi-bad",
+      type: "plugin",
+      tools: [{ name: "dump_legacy" }] as CatalogEntry["tools"],
+      non_conformance_rationale: {
+        reason: "",
+        scope_filtering_off: false as unknown as true,
+        contamination_risks: [],
+        affected_tools: ["dump_legacy", "ghost"],
+      },
+    };
+    const findings = S_MCP_002.check(entry);
+    // scope_off false + empty contamination + empty reason + 1 xref miss
+    expect(findings).toHaveLength(4);
+    const paths = new Set(findings.map((f) => f.path));
+    expect(paths.has("multi-bad.non_conformance_rationale.scope_filtering_off")).toBe(true);
+    expect(paths.has("multi-bad.non_conformance_rationale.contamination_risks")).toBe(true);
+    expect(paths.has("multi-bad.non_conformance_rationale.reason")).toBe(true);
+    expect(paths.has("multi-bad.non_conformance_rationale.affected_tools[ghost]")).toBe(true);
+  });
+
+  it("is registered in CATALOG_RULES", () => {
+    expect(CATALOG_RULES.some((r) => r.id === "S-MCP-002")).toBe(true);
   });
 });
 
@@ -275,5 +488,63 @@ describe("parseCatalogEntry — error paths", () => {
       }),
     );
     expect(entry.tools?.[0].future_field).toEqual({ nested: true });
+  });
+
+  it("extracts non_conformance_rationale block verbatim into typed shape (DD-333 F.1)", () => {
+    const entry = parseCatalogEntry(
+      JSON.stringify({
+        name: "nrr-blade",
+        type: "plugin",
+        tools: [{ name: "dump_legacy" }],
+        non_conformance_rationale: {
+          reason: "Upstream lacks scope arg.",
+          scope_filtering_off: true,
+          contamination_risks: ["cross-scope-packet-bleed", "audit-context-leak"],
+          affected_tools: ["dump_legacy"],
+        },
+      }),
+    );
+    expect(entry.non_conformance_rationale).toEqual({
+      reason: "Upstream lacks scope arg.",
+      scope_filtering_off: true,
+      contamination_risks: ["cross-scope-packet-bleed", "audit-context-leak"],
+      affected_tools: ["dump_legacy"],
+    });
+  });
+
+  it("does not set non_conformance_rationale when absent", () => {
+    const entry = parseCatalogEntry(
+      JSON.stringify({
+        name: "vanilla-blade",
+        type: "plugin",
+        tools: [{ name: "t", granularity: { ...goldenGranularity } }],
+      }),
+    );
+    expect(entry.non_conformance_rationale).toBeUndefined();
+  });
+
+  it("defensively does not extract non-object non_conformance_rationale into the typed shape (forward-compat preserves raw value verbatim)", () => {
+    // The typed extraction guard (typeof === "object" && !Array.isArray)
+    // rejects non-object values; the forward-compat loop preserves whatever
+    // shape the raw value had so that downstream consumers can still surface
+    // it. The shape mirrors the `tools` extraction pattern (non-array tools
+    // would similarly be preserved verbatim).
+    const entry = parseCatalogEntry(
+      JSON.stringify({
+        name: "bad-nrr-blade",
+        type: "plugin",
+        tools: [{ name: "t", granularity: { ...goldenGranularity } }],
+        non_conformance_rationale: "not an object",
+      }),
+    );
+    // Verbatim preservation (string passes through forward-compat). Critical:
+    // S-MCP-002 inspecting this entry MUST NOT crash; the rule's logic short-
+    // circuits because !rationale (string is truthy, but the typed shape
+    // access reads `.scope_filtering_off` etc which are undefined on a
+    // string — the rule then emits findings for the broken shape).
+    // For typed-shape consumers: the value cast through the interface is a
+    // lie at runtime, but the rule's defensive `typeof`/`Array.isArray`
+    // checks guard against it.
+    expect(typeof entry.non_conformance_rationale).toBe("string");
   });
 });

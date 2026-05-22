@@ -22,7 +22,7 @@ export {
   THRESHOLD_THREAT,
 } from "./clone.js";
 export { RULES } from "./rules.js";
-export { CATALOG_RULES, S_MCP_001 } from "./catalog-rules.js";
+export { CATALOG_RULES, S_MCP_001, S_MCP_002 } from "./catalog-rules.js";
 export {
   scanCatalogEntry,
   scanCatalogEntries,
@@ -46,6 +46,7 @@ export type {
   Finding,
   LintSeverity,
   ManifestContext,
+  NonConformanceRationale,
   PackScanResult,
   PackYAML,
   Rule,

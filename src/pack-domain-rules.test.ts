@@ -20,9 +20,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { S_DOM_001, PACK_DOMAIN_RULES } from "./pack-domain-rules.js";
+import { S_DOM_001, S_DOM_002, PACK_DOMAIN_RULES } from "./pack-domain-rules.js";
 import { scanCatalogEntries } from "./catalog-scanner.js";
-import type { CatalogEntry, DomainAccessBlock } from "./types.js";
+import type {
+  CatalogEntry,
+  CatalogTool,
+  DomainAccessBlock,
+  ToolGranularity,
+} from "./types.js";
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -200,6 +205,279 @@ describe("scanCatalogEntries — S-DOM-001 integration", () => {
     expect(result.summary.error).toBe(0);
     expect(result.summary.warning).toBe(1);
     expect(result.findings[0].rule_id).toBe("S-DOM-001");
+    expect(result.result).toBe("warn");
+  });
+});
+
+// ── DD-333 Phase F.4: S-DOM-002 — domain_scope honesty lint ───────
+
+/**
+ * Helper: a granularity block declaring a given domain_scope. The other four
+ * dimensions are filled with golden-path values so they don't trip any other
+ * rule.
+ */
+function granularityWith(
+  domain_scope: "single" | "multi" | "non-conforming-explicit" | undefined,
+): ToolGranularity {
+  const base: ToolGranularity = {
+    scope_filtering: "server-side",
+    field_projection: "per-field",
+    deterministic_ordering: "stable",
+    audit_surface: "structured",
+  };
+  if (domain_scope !== undefined) base.domain_scope = domain_scope;
+  return base;
+}
+
+function tool(
+  name: string,
+  granularity: ToolGranularity,
+  args?: CatalogTool["arguments"],
+  description?: string,
+): CatalogTool {
+  return { name, granularity, arguments: args, description };
+}
+
+describe("S-DOM-002 — Tool advertises domain selector but declares single domain_scope", () => {
+  // Case 1: honest pack with no contradictions → empty findings.
+  // Mixes: a multi-scope tool with a domain arg (legitimate), a single-scope
+  // tool with no domain arg (legitimate), and a single-scope tool that omits
+  // the field (silent at F.4 — promotion to required follows F.4.b).
+  it("s_dom_002_passes_honest_pack", () => {
+    const entry = plugin("honest-blade", {
+      tools: [
+        tool(
+          "search_across_domains",
+          granularityWith("multi"),
+          [{ name: "domain", type: "string" }],
+        ),
+        tool("read_current_domain", granularityWith("single"), [
+          { name: "limit", type: "integer" },
+        ]),
+        // No domain_scope declared, no scope-arg → silent.
+        tool("legacy_tool", granularityWith(undefined), [
+          { name: "id", type: "string" },
+        ]),
+      ],
+    });
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Case 2: contradiction — single declaration + scope arg → 1 warning.
+  it("s_dom_002_warns_on_single_plus_scope_arg", () => {
+    const entry = plugin("contradictory-blade", {
+      tools: [
+        tool(
+          "list_items",
+          granularityWith("single"),
+          [
+            { name: "scope", type: "string" },
+            { name: "limit", type: "integer" },
+          ],
+        ),
+      ],
+    });
+    const findings = S_DOM_002.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].rule_id).toBe("S-DOM-002");
+    expect(findings[0].severity).toBe("warning");
+    expect(findings[0].category).toBe("domain-scope-honesty");
+    expect(findings[0].path).toBe(
+      "contradictory-blade.tools[list_items].granularity.domain_scope",
+    );
+    expect(findings[0].message).toMatch(/list_items/);
+    expect(findings[0].message).toMatch(/scope/);
+    expect(findings[0].message).toMatch(/single/);
+    // Not the disclaimer path
+    expect(findings[0].message).not.toMatch(/\[info-only\]/);
+  });
+
+  // Case 3: same contradiction shape, but tool description carries the
+  // `// scope-arg-disclaimer:` annotation → finding downgraded to info-only.
+  it("s_dom_002_respects_disclaimer", () => {
+    const entry = plugin("disclaimed-blade", {
+      tools: [
+        tool(
+          "list_items",
+          granularityWith("single"),
+          [{ name: "scope", type: "string" }],
+          "List items. // scope-arg-disclaimer: 'scope' here means visibility scope, not user-domain.",
+        ),
+      ],
+    });
+    const findings = S_DOM_002.check(entry);
+    // Disclaimer path emits a finding flagged [info-only] in the message body
+    // (severity stays "warning" since LintSeverity has no info tier).
+    expect(findings).toHaveLength(1);
+    expect(findings[0].rule_id).toBe("S-DOM-002");
+    expect(findings[0].message).toMatch(/\[info-only\]/);
+  });
+
+  // Additional coverage: domain_scope omitted entirely and not on the
+  // non_conformance_rationale.domain_scope_unspecified list → silent at F.4.
+  // F.4.b promotion to required will flip this into a finding.
+  it("is silent when domain_scope is omitted and tool is not on unspecified list", () => {
+    const entry = plugin("legacy-undeclared-blade", {
+      tools: [
+        tool("list_items", granularityWith(undefined), [
+          { name: "scope", type: "string" },
+        ]),
+      ],
+    });
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Non-conformance rationale derivation: tool listed in
+  // domain_scope_unspecified with a scope-arg → finding fires (derived
+  // non-conformance still counts as a contradiction — honest declaration
+  // is not absolution).
+  it("fires when tool is on domain_scope_unspecified list AND advertises a scope arg", () => {
+    const entry = plugin("explicitly-non-conforming-blade", {
+      tools: [
+        tool("list_items", granularityWith(undefined), [
+          { name: "domain", type: "string" },
+        ]),
+      ],
+      non_conformance_rationale: {
+        reason: "Backend still backfilling domain-scope plumbing.",
+        scope_filtering_off: true,
+        contamination_risks: ["cross-scope-packet-bleed"],
+        affected_tools: [],
+        domain_scope_unspecified: ["list_items"],
+      },
+    });
+    const findings = S_DOM_002.check(entry);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].rule_id).toBe("S-DOM-002");
+    expect(findings[0].message).toMatch(/non-conforming-explicit/);
+  });
+
+  // Multi declaration is the legitimate shape for a scope-arg.
+  it("is silent when domain_scope is 'multi' even with a scope arg", () => {
+    const entry = plugin("multi-blade", {
+      tools: [
+        tool("search_across", granularityWith("multi"), [
+          { name: "domains", type: "string" },
+        ]),
+      ],
+    });
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Argument-name heuristic — exhaustive cover of the accepted name set.
+  it.each([
+    ["scope"],
+    ["domain"],
+    ["domains"],
+    ["domainName"],
+    ["domain_name"],
+    ["SCOPE"],
+    ["Domain"],
+  ])("detects scope-arg name '%s' (case-insensitive)", (argName) => {
+    const entry = plugin("name-variant-blade", {
+      tools: [
+        tool("list_items", granularityWith("single"), [
+          { name: argName, type: "string" },
+        ]),
+      ],
+    });
+    expect(S_DOM_002.check(entry)).toHaveLength(1);
+  });
+
+  // Non-matching argument names — silent.
+  it("is silent when no argument name matches the scope-arg heuristic", () => {
+    const entry = plugin("benign-blade", {
+      tools: [
+        tool("list_items", granularityWith("single"), [
+          { name: "limit", type: "integer" },
+          { name: "offset", type: "integer" },
+          { name: "query", type: "string" },
+        ]),
+      ],
+    });
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Argument type — only string/enum count.
+  it("is silent when scope-named argument has a non-string non-enum type", () => {
+    const entry = plugin("typed-blade", {
+      tools: [
+        tool("list_items", granularityWith("single"), [
+          // Type is integer — doesn't shape as a user-domain selector.
+          { name: "scope", type: "integer" },
+        ]),
+      ],
+    });
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Plugins without tools — silent.
+  it("is silent on plugins with no tools[]", () => {
+    const entry = plugin("toolless-blade");
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Tools without arguments[] inventory — silent (F.4 ships before broader
+  // catalog backfill that adds argument inventories).
+  it("is silent when tool omits the arguments[] inventory", () => {
+    const entry = plugin("no-args-blade", {
+      tools: [tool("list_items", granularityWith("single"))],
+    });
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Pack-type entries — silent (S-DOM-002 targets plugins).
+  it("is silent on pack-type catalog entries", () => {
+    const entry = pack("some-pack", {
+      tools: [
+        tool("list_items", granularityWith("single"), [
+          { name: "scope", type: "string" },
+        ]),
+      ],
+    });
+    expect(S_DOM_002.check(entry)).toEqual([]);
+  });
+
+  // Registration + posture checks.
+  it("is registered in PACK_DOMAIN_RULES", () => {
+    expect(PACK_DOMAIN_RULES.some((r) => r.id === "S-DOM-002")).toBe(true);
+  });
+
+  it("ships at warning severity (non-blocking) per architect lock #7", () => {
+    expect(S_DOM_002.severity).toBe("warning");
+  });
+
+  it("appliesTo is 'plugin'", () => {
+    expect(S_DOM_002.appliesTo).toBe("plugin");
+  });
+});
+
+// ── scanCatalogEntries aggregator integration for S-DOM-002 ──────
+
+describe("scanCatalogEntries — S-DOM-002 integration", () => {
+  it("S-DOM-002 findings flow through the aggregator at warning severity", () => {
+    const result = scanCatalogEntries([
+      plugin("contradictory-blade", {
+        tools: [
+          {
+            name: "list_items",
+            granularity: {
+              scope_filtering: "server-side",
+              field_projection: "per-field",
+              deterministic_ordering: "stable",
+              audit_surface: "structured",
+              domain_scope: "single",
+            },
+            arguments: [{ name: "scope", type: "string" }],
+          },
+        ],
+      }),
+    ]);
+    expect(result.summary.error).toBe(0);
+    expect(result.summary.warning).toBeGreaterThanOrEqual(1);
+    expect(
+      result.findings.some((f) => f.rule_id === "S-DOM-002"),
+    ).toBe(true);
     expect(result.result).toBe("warn");
   });
 });

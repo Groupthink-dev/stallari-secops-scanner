@@ -97,5 +97,156 @@ export const S_DOM_001: CatalogRule = {
   },
 };
 
+// ── DD-333 Phase F.4: S-DOM-002 — domain_scope honesty lint ───────
+
+/**
+ * Heuristic — argument names that strongly suggest a user-domain selector
+ * on the tool's input schema. Intentionally narrow per architect lock #5
+ * (DD-333 F.4 spec) to keep false-positives low. Tool authors who legitimately
+ * use one of these names for a non-domain purpose may disable the check per
+ * tool by adding `// scope-arg-disclaimer: <reason>` to the tool description
+ * — the disclaimer downgrades any finding to an info-level note (rendered as
+ * a warning-severity finding flagged with `[info-only]` in the message body;
+ * the TypeScript catalog-rule type only ships `"warning" | "error"`, so the
+ * informational distinction lives in the message body, not the severity).
+ */
+export const DOMAIN_SCOPE_ARG_NAME_PATTERN =
+  /^(scope|domain|domains|domainName|domain_name)$/i;
+
+/** Argument types that count as a user-domain selector surface. */
+const DOMAIN_SCOPE_ARG_TYPES = new Set(["string", "enum"]);
+
+/** Disclaimer marker tool authors embed in description to opt out. */
+const SCOPE_ARG_DISCLAIMER_PATTERN = /\/\/\s*scope-arg-disclaimer:\s*\S/;
+
+/**
+ * S-DOM-002 — fires a `"warning"` finding when a plugin catalog tool entry
+ * advertises a user-domain-shaped argument (per
+ * {@link DOMAIN_SCOPE_ARG_NAME_PATTERN}) while declaring
+ * `granularity.domain_scope === "single"`, OR while omitting the field
+ * but listed in `non_conformance_rationale.domain_scope_unspecified`
+ * (which the stallari-plugins build pipeline derives as
+ * `"non-conforming-explicit"`).
+ *
+ * The contradiction is the honesty signal: declaring "single" means the
+ * tool operates within ONE user-domain per call. Exposing a scope/domain
+ * argument lets the caller pick which domain — which is the surface area
+ * of a `"multi"` tool. Either the granularity declaration or the argument
+ * shape is wrong.
+ *
+ * Silent when:
+ * - Entry is not type="plugin" (packs don't carry tool granularity; S-DOM-001
+ *   covers their domain-access discipline.)
+ * - Plugin omits `tools[]` (runtime-discovered tools cannot be lint-checked
+ *   structurally).
+ * - Tool omits `arguments[]` (no inventory to inspect — F.4 ships before the
+ *   broader catalog backfill that adds argument inventories).
+ * - Tool's `granularity.domain_scope` is `"multi"` (the scope-arg surface is
+ *   legitimate when multi is declared).
+ * - Tool's description contains `// scope-arg-disclaimer: <reason>` (author
+ *   opt-out; finding downgraded to info-only — surfaced as a warning with
+ *   `[info-only]` prefix in the message body).
+ *
+ * Severity: `"warning"` at F.4 ship per architect lock #7. Mirrors S-DOM-001
+ * posture — promote to `"error"` only after the DD-338 A.2.dom backfill
+ * brings blade-side `_meta.domain_hint` substrate online.
+ *
+ * Convention #23 reader-audit note: this rule reads three contract slices —
+ * (a) the new `granularity.domain_scope` enum (DD-333 F.4 schema add),
+ * (b) the optional `arguments[]` inventory (DD-333 F.4 catalog-entry add), and
+ * (c) the new `non_conformance_rationale.domain_scope_unspecified` slot.
+ * The scanner is silent on catalog entries that pre-date any of these
+ * surfaces — F.4 is additive and the existing 11 packs / 30+ plugins are
+ * unaffected.
+ */
+export const S_DOM_002: CatalogRule = {
+  id: "S-DOM-002",
+  name: "Tool advertises domain selector but declares single domain_scope",
+  category: "domain-scope-honesty",
+  severity: "warning",
+  description:
+    "Tool granularity declares `domain_scope: single` while the tool's " +
+    "`arguments[]` inventory advertises a user-domain-shaped argument " +
+    "(name matches /^(scope|domain|domains|domainName|domain_name)$/i and " +
+    "type is string or enum). The contradiction means either the " +
+    "granularity declaration or the argument shape is wrong: a single-" +
+    "domain tool should not expose a domain selector. Authors may opt out " +
+    "per-tool by embedding `// scope-arg-disclaimer: <reason>` in the tool " +
+    "description (the finding is then downgraded to info-only). DD-333 " +
+    "Phase F.4 ships at warning severity (architect lock #7) — promotion to " +
+    "error follows DD-338 A.2.dom backfill. See DD-333.md § Phase F.4 and " +
+    "DD-341.md for the cross-DD context.",
+  appliesTo: "plugin",
+  check(entry: CatalogEntry): CatalogFinding[] {
+    if (entry.type !== "plugin") return [];
+    if (!entry.tools || entry.tools.length === 0) return [];
+
+    // DD-333 F.4 — derived non-conformance silence set for domain_scope.
+    // Tools listed here have an upstream-derived
+    // domain_scope: "non-conforming-explicit", which the procedural check
+    // still flags when a scope-arg is also present (the contradiction
+    // remains honest: derived non-conformance != absolution from S-DOM-002).
+    const unspecified = new Set(
+      entry.non_conformance_rationale?.domain_scope_unspecified ?? [],
+    );
+
+    const findings: CatalogFinding[] = [];
+    for (const tool of entry.tools) {
+      // No arguments inventory → cannot lint structurally.
+      if (!tool.arguments || tool.arguments.length === 0) continue;
+
+      // Detect a user-domain-shaped argument.
+      const scopeArg = tool.arguments.find((arg) => {
+        if (!arg || typeof arg.name !== "string") return false;
+        if (!DOMAIN_SCOPE_ARG_NAME_PATTERN.test(arg.name)) return false;
+        // Default to string when type is omitted — most common shape.
+        const type = (arg.type ?? "string").toLowerCase();
+        return DOMAIN_SCOPE_ARG_TYPES.has(type);
+      });
+      if (!scopeArg) continue;
+
+      // Resolve effective domain_scope. Either declared on the tool, or
+      // derived from non_conformance_rationale.domain_scope_unspecified.
+      const declared = tool.granularity?.domain_scope;
+      const derived =
+        declared ??
+        (unspecified.has(tool.name)
+          ? ("non-conforming-explicit" as const)
+          : undefined);
+
+      // Multi is the legitimate shape for a scope-arg — no finding.
+      if (derived === "multi") continue;
+      // Missing entirely (and not on the unspecified list) → silent at F.4.
+      // F.4.b promotion to required will flip this branch into a finding;
+      // until then we don't fire on tools that simply haven't declared yet.
+      if (derived === undefined) continue;
+      // derived is "single" or "non-conforming-explicit" — both are
+      // contradictions with the scope-arg surface.
+
+      const disclaimer = SCOPE_ARG_DISCLAIMER_PATTERN.test(
+        tool.description ?? "",
+      );
+
+      const baseMessage =
+        `Tool '${tool.name}' (in plugin '${entry.name}') advertises a ` +
+        `user-domain-shaped argument '${scopeArg.name}' but declares ` +
+        `granularity.domain_scope='${derived}'. A single-domain tool ` +
+        `should not expose a domain selector — either declare ` +
+        `domain_scope='multi' or remove the '${scopeArg.name}' argument. ` +
+        `See DD-333 Phase F.4 + stallari-pack-spec/docs/domain-scope.md.`;
+
+      findings.push({
+        rule_id: this.id,
+        severity: this.severity,
+        category: this.category,
+        name: this.name,
+        message: disclaimer ? `[info-only] ${baseMessage}` : baseMessage,
+        path: `${entry.name}.tools[${tool.name}].granularity.domain_scope`,
+      });
+    }
+    return findings;
+  },
+};
+
 /** All registered pack domain-access rules. */
-export const PACK_DOMAIN_RULES: CatalogRule[] = [S_DOM_001];
+export const PACK_DOMAIN_RULES: CatalogRule[] = [S_DOM_001, S_DOM_002];

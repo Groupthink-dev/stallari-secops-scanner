@@ -11,7 +11,11 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
-import type { CatalogEntry, CatalogTool } from "./types.js";
+import type {
+  CatalogEntry,
+  CatalogTool,
+  NonConformanceRationale,
+} from "./types.js";
 
 /**
  * Parse a single catalog entry JSON string. Throws on JSON parse errors or
@@ -76,6 +80,20 @@ export function parseCatalogEntry(jsonContent: string): CatalogEntry {
     entry.tier = obj.tier;
   }
   if (tools) entry.tools = tools;
+
+  // DD-333 F.1 — non_conformance_rationale block (defensive guard mirrors
+  // the `tools` extraction pattern above). AJV upstream in stallari-plugins
+  // enforces the block's internal shape; the scanner consumes whatever the
+  // catalog row carries and lets S-MCP-002 surface defects against post-build
+  // state.
+  if (
+    obj.non_conformance_rationale &&
+    typeof obj.non_conformance_rationale === "object" &&
+    !Array.isArray(obj.non_conformance_rationale)
+  ) {
+    entry.non_conformance_rationale =
+      obj.non_conformance_rationale as NonConformanceRationale;
+  }
 
   // Preserve other top-level catalog fields for forward-compat.
   for (const [k, v] of Object.entries(obj)) {

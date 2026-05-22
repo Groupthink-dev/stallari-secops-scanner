@@ -76,6 +76,24 @@ export interface CatalogTool {
 }
 
 /**
+ * DD-341 Phase C — domain_access block lifted from pack manifest onto the
+ * catalog entry by the stallari-plugins build pipeline. S-DOM-001 checks
+ * for its presence on pack-type catalog entries.
+ *
+ * Shape mirrors pack-spec v4.3.0 `domain_access:` block. Only the presence
+ * of the key matters for S-DOM-001; field-level validation is upstream in
+ * the pack-spec AJV schema gate.
+ */
+export interface DomainAccessBlock {
+  /** Plain-language explanation of what vault content the pack reads (10-240 chars). */
+  description: string;
+  /** True if the pack needs access to sensitive content. Default false. */
+  needs_sensitive?: boolean;
+  /** Display hint only — example domain names in other users' vaults. ≤8 items. */
+  examples_in_other_vaults?: string[];
+}
+
+/**
  * Parsed catalog entry (subset). Plugins declare tools; packs do not.
  * Schema lives in stallari-plugins; we read only the fields S-MCP-001
  * + S-MCP-002 care about.
@@ -89,6 +107,13 @@ export interface CatalogEntry {
   tools?: CatalogTool[];
   /** DD-333 F.1 — non-conformance rationale (when declared). */
   non_conformance_rationale?: NonConformanceRationale;
+  /**
+   * DD-341 Phase C — domain_access block lifted from pack manifest by the
+   * stallari-plugins build pipeline. Present on conformant pack entries;
+   * absent on packs predating pack-spec v4.3.0 or packs that omit the block.
+   * S-DOM-001 flags absence on pack-type entries.
+   */
+  domain_access?: DomainAccessBlock | null;
   /** Free-form catalog metadata not consumed by lint rules. */
   [key: string]: unknown;
 }

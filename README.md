@@ -97,6 +97,7 @@ PR approved / blocked based on scan result
 | SINJ-006 | Social engineering | medium | Urgency markers, authority claims, emotional manipulation |
 | SINJ-007 | Excessive tool use | medium | Filesystem ops, shell execution, socket access |
 | SINJ-008 | Undeclared capabilities | low | MCP tool references not declared in the pack manifest |
+| S-DT-001 | Datetime substrate shellout | low | `eval $(agentic-timestamp …)` and doc-prose references where the per-turn `<datetime>` system-reminder block should be used (DD-349). Saga-jq state-stamp lines whitelisted. |
 
 ### Clone detection (SCLN)
 

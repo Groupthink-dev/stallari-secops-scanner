@@ -11,15 +11,94 @@ export type LintSeverity = "warning" | "error";
 /**
  * Per-tool granularity declaration on a catalog plugin's tools[] entry.
  * Mirrors the JSON-schema fragment in
- * `stallari-plugins/schemas/catalog-entry.schema.json`. All four dimensions
- * are required when the block is present; the block as a whole is optional
- * at pack-spec 3.x (additive).
+ * `stallari-plugins/schemas/catalog-entry.schema.json`. The first four
+ * dimensions are required when the block is present; the block as a whole
+ * is optional at pack-spec 3.x (additive). DD-333 Phase F.4 (2026-05-22)
+ * added an optional 5th dimension `domain_scope` declaring whether a tool
+ * operates on a single user-domain at a time or spans multiple. Optional
+ * at F.4 ship; promotion to required follows the DD-338 A.2.dom backfill.
  */
 export interface ToolGranularity {
-    scope_filtering: "server-side" | "client-side" | "none";
+    scope_filtering: "server-side" | "client-side" | "none" | "non-conforming-explicit";
     field_projection: "per-field" | "top-level" | "none";
     deterministic_ordering: "stable" | "unstable" | "unsorted";
     audit_surface: "structured" | "minimal" | "none";
+    /**
+     * DD-333 Phase F.4 — 5th dimension. Declares whether the tool operates
+     * within a single user-domain ("single") or spans multiple ("multi").
+     * "non-conforming-explicit" is derived by the stallari-plugins build
+     * pipeline for tools listed in
+     * `non_conformance_rationale.domain_scope_unspecified`.
+     *
+     * Optional at F.4 ship — promotion to required follows DD-338 A.2.dom
+     * blade-side backfill. S-DOM-002 (this scanner) consumes this field to
+     * detect the "single + scope-arg" violation pattern.
+     */
+    domain_scope?: "single" | "multi" | "non-conforming-explicit";
+}
+/**
+ * DD-333 F.1 — non-conformance rationale block on a plugin catalog entry.
+ *
+ * Authors declare this top-level block to acknowledge honest non-conformance
+ * with the granularity contract. The stallari-plugins build pipeline
+ * (`scripts/build-catalog.js`) derives `granularity.scope_filtering:
+ * "non-conforming-explicit"` for each tool listed in `affected_tools` whose
+ * own granularity block is omitted; the rationale block flows verbatim onto
+ * the catalog row for downstream consumption.
+ *
+ * Sister amendments out of scope for F.1:
+ * - [[DD-189]] — UI surfaces for informed-consent warning copy.
+ * - [[DD-301]] — memory contamination propagation when non-conforming tools
+ *   land in an `assemblySteps` chain.
+ *
+ * The cross-field invariant — every `affected_tools[i]` MUST cross-reference
+ * a real `tools[].name` — is enforced procedurally in
+ * `stallari-plugins/scripts/build-catalog.js` AND by S-MCP-002 in this
+ * scanner against post-build catalog state.
+ */
+export interface NonConformanceRationale {
+    /** Non-empty author-supplied explanation. Surfaces in UI + audit Tracks. */
+    reason: string;
+    /** Explicit acknowledgment. MUST be `true` when block present. */
+    scope_filtering_off: true;
+    /** Controlled vocabulary; non-empty. */
+    contamination_risks: Array<"memory-source-tainted" | "audit-context-leak" | "cross-scope-packet-bleed" | "other-see-reason">;
+    /**
+     * Tool names from this entry's `tools[].name`. Cross-field invariant —
+     * every entry MUST reference an actual tool.
+     */
+    affected_tools: string[];
+    /**
+     * DD-333 Phase F.4 — sister to `affected_tools` for the `domain_scope`
+     * dimension. Lists tool names that legitimately cannot yet declare a
+     * `domain_scope` value (e.g. blade backend still backfilling). The
+     * stallari-plugins build pipeline derives
+     * `granularity.domain_scope: "non-conforming-explicit"` for each tool
+     * listed here whose own block omits the field.
+     *
+     * Optional and additive — does not affect the existing F.1
+     * `affected_tools` / `scope_filtering` flow.
+     */
+    domain_scope_unspecified?: string[];
+}
+/**
+ * Per-tool argument declaration (catalog-entry shape, NOT MCP wire shape).
+ *
+ * DD-333 Phase F.4 — S-DOM-002 inspects this collection to detect the
+ * "single + scope-arg" violation pattern. Optional and additive: existing
+ * catalog entries (which omit `arguments[]`) pass through unchanged. When
+ * present, the scanner uses argument names to heuristically detect
+ * user-domain selectors (see {@link DOMAIN_SCOPE_ARG_NAME_PATTERN}).
+ *
+ * Free-form fields are tolerated; the scanner only consumes `name` + `type`.
+ */
+export interface CatalogToolArgument {
+    /** Argument name as advertised on the tool's input schema. */
+    name: string;
+    /** JSON-schema-style type tag. `string` and `enum` are the violation surface. */
+    type?: string;
+    /** Other free-form fields are tolerated. */
+    [key: string]: unknown;
 }
 /** Per-tool entry inside a catalog plugin's tools[] array. */
 export interface CatalogTool {
@@ -27,13 +106,37 @@ export interface CatalogTool {
     description?: string;
     risk_class?: string;
     granularity?: ToolGranularity;
-    /** Other free-form fields are tolerated; we only consume name + granularity. */
+    /**
+     * DD-333 Phase F.4 — optional per-tool argument inventory consumed by
+     * S-DOM-002 to detect the "single + scope-arg" violation pattern. When
+     * absent, S-DOM-002 silently skips (no false-positives on legacy
+     * catalog entries that predate F.4).
+     */
+    arguments?: CatalogToolArgument[];
+    /** Other free-form fields are tolerated; we only consume name + granularity + arguments. */
     [key: string]: unknown;
+}
+/**
+ * DD-341 Phase C — domain_access block lifted from pack manifest onto the
+ * catalog entry by the stallari-plugins build pipeline. S-DOM-001 checks
+ * for its presence on pack-type catalog entries.
+ *
+ * Shape mirrors pack-spec v4.3.0 `domain_access:` block. Only the presence
+ * of the key matters for S-DOM-001; field-level validation is upstream in
+ * the pack-spec AJV schema gate.
+ */
+export interface DomainAccessBlock {
+    /** Plain-language explanation of what vault content the pack reads (10-240 chars). */
+    description: string;
+    /** True if the pack needs access to sensitive content. Default false. */
+    needs_sensitive?: boolean;
+    /** Display hint only — example domain names in other users' vaults. ≤8 items. */
+    examples_in_other_vaults?: string[];
 }
 /**
  * Parsed catalog entry (subset). Plugins declare tools; packs do not.
  * Schema lives in stallari-plugins; we read only the fields S-MCP-001
- * cares about.
+ * + S-MCP-002 care about.
  */
 export interface CatalogEntry {
     name: string;
@@ -42,6 +145,15 @@ export interface CatalogEntry {
     version?: string;
     tier?: "certified" | "verified" | "community" | null;
     tools?: CatalogTool[];
+    /** DD-333 F.1 — non-conformance rationale (when declared). */
+    non_conformance_rationale?: NonConformanceRationale;
+    /**
+     * DD-341 Phase C — domain_access block lifted from pack manifest by the
+     * stallari-plugins build pipeline. Present on conformant pack entries;
+     * absent on packs predating pack-spec v4.3.0 or packs that omit the block.
+     * S-DOM-001 flags absence on pack-type entries.
+     */
+    domain_access?: DomainAccessBlock | null;
     /** Free-form catalog metadata not consumed by lint rules. */
     [key: string]: unknown;
 }

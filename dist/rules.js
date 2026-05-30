@@ -172,6 +172,62 @@ const undeclaredCapabilities = {
         return findings;
     },
 };
+// ── Low: Datetime substrate shellout (DD-349 Phase B.4) ──────────
+/**
+ * DD-349 § Phase B.4 — flag skill bodies that shell out to
+ * `agentic-timestamp` instead of reading the per-turn `<datetime>`
+ * system-reminder block injected by the dispatcher (DD-349 Phase A,
+ * shipped harness v0.99.46.0).
+ *
+ * Whitelist: saga-jq state-stamp lines of the form
+ *   `jq --arg step "<word>" --arg now "$(agentic-timestamp --iso)"`
+ * are PRESERVED — these are real shell-executed writes to
+ * `$DISPATCH_SAGA_FILE` at saga-step closure, not LLM-prose timestamps.
+ * Three such occurrences exist in `stallari-core/skills/`
+ * (daily-digest / weekly-digest / process-inbox) at the time of rule
+ * authoring (DD-349 Phase B.0 audit, 2026-05-30).
+ *
+ * Severity ships at `low` (Phase B.4, advisory); ramps in Phase D once
+ * the pack-content sweep + bundled-snapshot regen are clean.
+ */
+const SAGA_JQ_WHITELIST = /jq\s+--arg\s+step\s+"\w+"\s+--arg\s+now\s+"\$\(agentic-timestamp\s+--iso\)"/;
+const datetimeShellout = {
+    id: "S-DT-001",
+    name: "Datetime substrate shellout",
+    category: "datetime-shellout",
+    severity: "low",
+    description: "Skill body shells out to `agentic-timestamp` instead of reading the per-turn `<datetime>` block (DD-349). Saga-jq state-stamp lines whitelisted.",
+    patterns: [],
+    structural(ctx) {
+        const findings = [];
+        const triggerPatterns = [
+            /eval\s+["']?\$\(agentic-timestamp/i,
+            /\bagentic-timestamp\s+--/i,
+            /`agentic-timestamp`/i,
+        ];
+        const lines = ctx.prompt.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (SAGA_JQ_WHITELIST.test(line))
+                continue;
+            for (const pat of triggerPatterns) {
+                if (pat.test(line)) {
+                    findings.push({
+                        rule_id: this.id,
+                        severity: this.severity,
+                        category: this.category,
+                        name: this.name,
+                        message: `Line ${i + 1}: agentic-timestamp shellout — use the per-turn <datetime> system-reminder block (DD-349)`,
+                        location: ctx.location,
+                        matched: line.trim().slice(0, 100),
+                    });
+                    break;
+                }
+            }
+        }
+        return findings;
+    },
+};
 /** All registered scan rules. */
 export const RULES = [
     instructionOverride,
@@ -182,4 +238,5 @@ export const RULES = [
     socialEngineering,
     excessiveToolUse,
     undeclaredCapabilities,
+    datetimeShellout,
 ];

@@ -76,6 +76,17 @@ export function parseCatalogEntry(jsonContent) {
     }
     if (tools)
         entry.tools = tools;
+    // DD-333 F.1 — non_conformance_rationale block (defensive guard mirrors
+    // the `tools` extraction pattern above). AJV upstream in stallari-plugins
+    // enforces the block's internal shape; the scanner consumes whatever the
+    // catalog row carries and lets S-MCP-002 surface defects against post-build
+    // state.
+    if (obj.non_conformance_rationale &&
+        typeof obj.non_conformance_rationale === "object" &&
+        !Array.isArray(obj.non_conformance_rationale)) {
+        entry.non_conformance_rationale =
+            obj.non_conformance_rationale;
+    }
     // Preserve other top-level catalog fields for forward-compat.
     for (const [k, v] of Object.entries(obj)) {
         if (k in entry)

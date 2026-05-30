@@ -166,6 +166,61 @@ describe("scanPrompt", () => {
     );
     expect(findings[0].location).toBe("agents.my-agent");
   });
+
+  // ── S-DT-001 — Datetime substrate shellout (DD-349 Phase B.4) ──
+
+  it("S-DT-001 flags eval-prose agentic-timestamp shellout", () => {
+    const findings = scanPrompt(
+      'Run once via Bash: `eval "$(agentic-timestamp --iso --date --human)"` — this sets $iso for the skill run.',
+      "skills.daily-digest",
+    );
+    expect(findings.some((f) => f.rule_id === "S-DT-001")).toBe(true);
+    expect(findings.find((f) => f.rule_id === "S-DT-001")!.severity).toBe(
+      "low",
+    );
+  });
+
+  it("S-DT-001 flags doc-prose agentic-timestamp reference", () => {
+    const findings = scanPrompt(
+      "All timestamps via `agentic-timestamp --human` (auto-detects AEDT/AEST).",
+      "skills.morning-sweep",
+    );
+    expect(findings.some((f) => f.rule_id === "S-DT-001")).toBe(true);
+  });
+
+  it("S-DT-001 does NOT flag saga-jq state-stamp lines (whitelist)", () => {
+    const findings = scanPrompt(
+      '  jq --arg step "gather" --arg now "$(agentic-timestamp --iso)" \\\n    \'.steps[$step].at = $now\' "$DISPATCH_SAGA_FILE"',
+      "skills.daily-digest",
+    );
+    expect(findings.some((f) => f.rule_id === "S-DT-001")).toBe(false);
+  });
+
+  it("S-DT-001 does NOT flag <datetime> block references", () => {
+    const findings = scanPrompt(
+      "Read the `iso:` field from the most recent `<datetime>` system-reminder block for created frontmatter.",
+      "skills.daily-digest",
+    );
+    expect(findings.some((f) => f.rule_id === "S-DT-001")).toBe(false);
+  });
+
+  it("S-DT-001 flags mixed skill (eval + saga-jq) on eval line but not saga-jq line", () => {
+    const skillBody = `
+Run once via Bash: \`eval "$(agentic-timestamp --iso --date)"\` — this sets $iso, $date.
+
+Later, at saga step closure:
+
+\`\`\`bash
+  jq --arg step "gather" --arg now "$(agentic-timestamp --iso)" \\
+    '.steps[$step].at = $now' "$DISPATCH_SAGA_FILE"
+\`\`\`
+`;
+    const findings = scanPrompt(skillBody, "skills.daily-digest").filter(
+      (f) => f.rule_id === "S-DT-001",
+    );
+    expect(findings.length).toBe(1);
+    expect(findings[0].matched).toContain("eval");
+  });
 });
 
 // ── scanPayload ──────────────────────────────────────────────────

@@ -234,6 +234,95 @@ export interface StructuralContext {
   declaredServices?: string[];
 }
 
+// ── DD-370: Skill manifest contract types ───────────────────────
+
+/**
+ * Subset of a skill `.md` frontmatter (the v4.5 manifest contract,
+ * DD-344) that S-SKL-001 reads. All fields optional — their ABSENCE is
+ * exactly what the lint flags. Mirrors the contracted stallari-core
+ * exemplars (`flag-triage.md`, `wiki-maintain-enrich.md`).
+ *
+ * The service surface (`required_services` / `optional_services`) may live
+ * here (post-DD-370-uplift) OR only in the pack.yaml `skills[].services_used`
+ * import block (pre-uplift). {@link SkillScanContext} carries both so the
+ * rule works on either side of the migration.
+ */
+export interface SkillManifest {
+  version?: string;
+  required_services?: string[];
+  optional_services?: string[];
+  /** Per-service-op risk class map (DD-280). Keys are `service.op`. */
+  risk_class?: Record<string, string>;
+  /** Handoff-shaped work emission (DD-245). Presence is what S-SKL-001 checks. */
+  track_emits?: Array<{ workflow?: string; when?: string; [k: string]: unknown }>;
+  /** Skill-resolved op:// credentials (DD-344 A.1). */
+  sealed_credentials?: Array<{ name?: string; source?: string; [k: string]: unknown }>;
+  /** DD-278/DD-341 domain-scope consent block. */
+  domain_access?: { description?: string; needs_sensitive?: boolean; [k: string]: unknown } | null;
+  required_permissions?: string[];
+  required_capabilities?: string[];
+  /** Free-form frontmatter not consumed by the rule. */
+  [key: string]: unknown;
+}
+
+/**
+ * The pack.yaml `skills[]` import entry for a single skill — the OTHER
+ * contract surface. Pre-uplift this is where `services_used` lives; the
+ * rule flattens it to `service.op` form to learn the op surface.
+ */
+export interface SkillImportEntry {
+  /** `./skills/<slug>.md` relative path. */
+  import?: string;
+  name?: string;
+  agent?: string;
+  category?: string;
+  /** `[{ service: "billing", operations: ["create_adjustment", ...] }]`. */
+  services_used?: Array<{ service: string; operations: string[] }>;
+  required_services?: string[];
+  trigger?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Context a {@link SkillRule} runs over — both contract surfaces + body. */
+export interface SkillScanContext {
+  /** Skill slug (derived from the import path or frontmatter). */
+  skillName: string;
+  /** Owning pack slug. */
+  packName: string;
+  /** Parsed skill `.md` frontmatter. */
+  manifest: SkillManifest;
+  /** The pack.yaml import entry for this skill (may be undefined). */
+  importEntry?: SkillImportEntry;
+  /** Skill `.md` body (post-frontmatter), for op:// / handoff signal scans. */
+  body: string;
+}
+
+/**
+ * A skill-contract rule (DD-370 S-SKL-001 onwards). Sister to
+ * {@link CatalogRule} but runs over a {@link SkillScanContext} (the dual
+ * pack.yaml-import + skill-frontmatter surface) rather than a built
+ * catalog entry. Reuses {@link CatalogFinding} for output shape.
+ */
+export interface SkillRule {
+  id: string;
+  name: string;
+  category: string;
+  severity: LintSeverity;
+  description: string;
+  check: (ctx: SkillScanContext) => CatalogFinding[];
+}
+
+/** Aggregated result of a skill-contract scan over a pack. */
+export interface SkillScanResult {
+  version: string;
+  scanner: string;
+  scan_date: string;
+  result: "pass" | "warn" | "fail";
+  skills_scanned: number;
+  findings: CatalogFinding[];
+  summary: Record<LintSeverity, number>;
+}
+
 /** A single finding from a scan. */
 export interface Finding {
   rule_id: string;

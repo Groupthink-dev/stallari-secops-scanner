@@ -11,8 +11,11 @@ export { normalize, extractTrigrams, jaccardSimilarity, buildCorpusFromPacks, bu
 export { RULES } from "./rules.js";
 export { CATALOG_RULES, S_MCP_001, S_MCP_002 } from "./catalog-rules.js";
 export { PACK_DOMAIN_RULES, S_DOM_001 } from "./pack-domain-rules.js";
+export { SKILL_RULES, S_SKL_001, isWriteClassOp } from "./skill-rules.js";
+export { scanSkill, scanPackSkills } from "./skill-scanner.js";
+export { parseSkillManifest, parseSkillImports, splitFrontmatter, skillSlug, flattenServiceOps, } from "./skill-parser.js";
 export { scanCatalogEntry, scanCatalogEntries, } from "./catalog-scanner.js";
 export { parseCatalogEntry, loadCatalogDir } from "./catalog-parser.js";
 export { BUNDLED_THREAT_ENTRIES, BUNDLED_THREATS_VERSION, loadBundledThreats, } from "./bundled-threats.js";
 export type { ThreatEntry } from "./bundled-threats.js";
-export type { CatalogEntry, CatalogFinding, CatalogRule, CatalogScanResult, CatalogTool, DomainAccessBlock, CloneFinding, CorpusEntry, ExtractedPrompt, Finding, LintSeverity, ManifestContext, NonConformanceRationale, PackScanResult, PackYAML, Rule, ScanException, ScanResult, SealedPayload, Severity, StructuralContext, ToolGranularity, } from "./types.js";
+export type { CatalogEntry, CatalogFinding, CatalogRule, CatalogScanResult, CatalogTool, DomainAccessBlock, CloneFinding, CorpusEntry, ExtractedPrompt, Finding, LintSeverity, ManifestContext, NonConformanceRationale, PackScanResult, PackYAML, Rule, ScanException, ScanResult, SealedPayload, Severity, SkillImportEntry, SkillManifest, SkillRule, SkillScanContext, SkillScanResult, StructuralContext, ToolGranularity, } from "./types.js";

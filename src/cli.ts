@@ -13,19 +13,23 @@
  *   2 — warn (medium or low severity findings only)
  */
 
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { join, basename } from "node:path";
 import { scanPayload, scanPackYAML, SCANNER_VERSION } from "./scanner.js";
 import { buildCorpusFromPacks, buildThreatCorpus } from "./clone.js";
 import { loadBundledThreats } from "./bundled-threats.js";
 import { loadCatalogDir } from "./catalog-parser.js";
 import { scanCatalogEntries } from "./catalog-scanner.js";
+import { scanPackSkills } from "./skill-scanner.js";
 import type {
+  CatalogFinding,
   CorpusEntry,
+  LintSeverity,
   ManifestContext,
   PackScanResult,
   ScanException,
   SealedPayload,
+  SkillScanResult,
 } from "./types.js";
 
 function usage(): never {
@@ -36,12 +40,16 @@ Usage:
   stallari-secops-scanner scan --stdin [options]
   stallari-secops-scanner scan-pack <pack.yaml> [options]
   stallari-secops-scanner scan-catalog <dir> [options]
+  stallari-secops-scanner scan-skills <pack-or-packs-dir> [options]
 
 Commands:
   scan            Scan a sealed pack payload (JSON)
   scan-pack       Scan an open pack YAML file
   scan-catalog    Scan a stallari-plugins/plugins/tools/ catalog dir
                   (runs DD-333 S-MCP-001 + future catalog-rule additions)
+  scan-skills     Lint skill manifests against the DD-344 v4.5 contract
+                  (DD-370 S-SKL-001). Accepts a single pack dir (pack.yaml +
+                  skills/) or a parent dir of packs. Warning-only by default.
 
 Options (scan):
   --manifest <file>     Manifest JSON for structural checks
@@ -52,13 +60,20 @@ Options (scan-pack):
   --threats <file>      JSON file of known malicious prompts
   --exceptions <file>   YAML/JSON exceptions file
 
+Options (scan-skills):
+  --strict              Treat warnings as failures (exit 1). Reserved for the
+                        DD-370 Phase D promotion (post-EA). Default: off —
+                        S-SKL-001 is warning-only per DD-370 OQ-1.
+
 Common options:
   --json                Output raw JSON (default: human-readable)
   --help                Show this help
 
 Exit codes:
   scan / scan-pack: 0=pass, 1=fail (critical/high), 2=warn (medium/low)
-  scan-catalog:     0=pass, 1=fail (any error finding), 2=warn (warning-only)`);
+  scan-catalog:     0=pass, 1=fail (any error finding), 2=warn (warning-only)
+  scan-skills:      0=pass OR warn (warning-only, non-blocking); 1=fail
+                    (error findings, or any finding under --strict)`);
   return process.exit(2) as never;
 }
 
@@ -86,7 +101,16 @@ interface ScanCatalogArgs {
   jsonOutput: boolean;
 }
 
-function parseArgs(argv: string[]): ScanArgs | ScanPackArgs | ScanCatalogArgs {
+interface ScanSkillsArgs {
+  command: "scan-skills";
+  target: string;
+  strict: boolean;
+  jsonOutput: boolean;
+}
+
+function parseArgs(
+  argv: string[],
+): ScanArgs | ScanPackArgs | ScanCatalogArgs | ScanSkillsArgs {
   const args = argv.slice(2);
   if (args.length === 0 || args.includes("--help")) usage();
 
@@ -94,10 +118,34 @@ function parseArgs(argv: string[]): ScanArgs | ScanPackArgs | ScanCatalogArgs {
   if (
     command !== "scan" &&
     command !== "scan-pack" &&
-    command !== "scan-catalog"
+    command !== "scan-catalog" &&
+    command !== "scan-skills"
   ) {
     console.error(`Unknown command: ${command}`);
     usage();
+  }
+
+  if (command === "scan-skills") {
+    let target: string | null = null;
+    let strict = false;
+    let jsonOutput = false;
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] === "--json") {
+        jsonOutput = true;
+      } else if (args[i] === "--strict") {
+        strict = true;
+      } else if (args[i].startsWith("-")) {
+        console.error(`Unknown option: ${args[i]}`);
+        usage();
+      } else {
+        target = args[i];
+      }
+    }
+    if (!target) {
+      console.error("Missing pack/packs directory path");
+      usage();
+    }
+    return { command: "scan-skills", target, strict, jsonOutput };
   }
 
   if (command === "scan-catalog") {
@@ -408,14 +456,126 @@ function mainScanCatalog(opts: ScanCatalogArgs) {
   process.exit(0);
 }
 
+// ── DD-370: scan-skills fs glue + driver ────────────────────────
+
+/** True when `dir` is a single pack (has pack.yaml + skills/). */
+function isPackDir(dir: string): boolean {
+  return existsSync(join(dir, "pack.yaml")) && existsSync(join(dir, "skills"));
+}
+
+/** Read a single pack dir into (packName, packYamlContent, slug→md map). */
+function loadPackForSkillScan(
+  packDir: string,
+): { packName: string; packYaml: string; skills: Map<string, string> } {
+  const packYaml = readFileSync(join(packDir, "pack.yaml"), "utf8");
+  const skills = new Map<string, string>();
+  const skillsDir = join(packDir, "skills");
+  if (existsSync(skillsDir)) {
+    for (const file of readdirSync(skillsDir)) {
+      if (!file.endsWith(".md")) continue;
+      const slug = basename(file, ".md");
+      skills.set(slug, readFileSync(join(skillsDir, file), "utf8"));
+    }
+  }
+  return { packName: basename(packDir), packYaml, skills };
+}
+
+/** Resolve `target` to the list of pack dirs to scan (single pack or parent). */
+function resolvePackDirs(target: string): string[] {
+  if (isPackDir(target)) return [target];
+  // Parent dir: every immediate subdir that is itself a pack dir.
+  const dirs: string[] = [];
+  for (const name of readdirSync(target)) {
+    const full = join(target, name);
+    try {
+      if (statSync(full).isDirectory() && isPackDir(full)) dirs.push(full);
+    } catch {
+      /* skip unreadable entries */
+    }
+  }
+  return dirs.sort();
+}
+
+function mainScanSkills(opts: ScanSkillsArgs) {
+  const packDirs = resolvePackDirs(opts.target);
+  if (packDirs.length === 0) {
+    console.error(
+      `No pack found at '${opts.target}' (expected a dir with pack.yaml + skills/, ` +
+        `or a parent dir of such packs).`,
+    );
+    process.exit(1);
+  }
+
+  const allFindings: CatalogFinding[] = [];
+  const perPack: SkillScanResult[] = [];
+  let totalSkills = 0;
+  for (const dir of packDirs) {
+    const { packName, packYaml, skills } = loadPackForSkillScan(dir);
+    const res = scanPackSkills(packName, packYaml, skills);
+    perPack.push(res);
+    allFindings.push(...res.findings);
+    totalSkills += res.skills_scanned;
+  }
+
+  const summary: Record<LintSeverity, number> = { warning: 0, error: 0 };
+  for (const f of allFindings) summary[f.severity]++;
+
+  if (opts.jsonOutput) {
+    console.log(
+      JSON.stringify(
+        {
+          version: "1.0",
+          scanner: `stallari-secops-scanner/${SCANNER_VERSION}`,
+          packs_scanned: packDirs.length,
+          skills_scanned: totalSkills,
+          findings: allFindings,
+          summary,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    const hasError = summary.error > 0;
+    const hasWarn = summary.warning > 0;
+    const icon = hasError ? "FAIL" : hasWarn ? "WARN" : "PASS";
+    console.log(
+      `\n${icon}  skill-contract (${packDirs.length} pack(s), ${totalSkills} skill(s)) — ` +
+        `${allFindings.length} finding(s)\n`,
+    );
+    for (const f of allFindings) {
+      const sev = f.severity.toUpperCase().padEnd(8);
+      console.log(`  ${sev} [${f.rule_id}] ${f.path}`);
+      console.log(`           ${f.message}`);
+      console.log();
+    }
+    console.log(`  Summary: ${summary.error} error, ${summary.warning} warning`);
+    if (summary.warning > 0 && !opts.strict) {
+      console.log(
+        `  (warning-only — non-blocking per DD-370 OQ-1; re-run with --strict to fail)\n`,
+      );
+    } else {
+      console.log();
+    }
+  }
+
+  // Exit policy: errors always fail; warnings fail only under --strict
+  // (the DD-370 Phase D, post-EA, promotion path).
+  if (summary.error > 0) process.exit(1);
+  if (opts.strict && summary.warning > 0) process.exit(1);
+  process.exit(0);
+}
+
 function main() {
   const opts = parseArgs(process.argv);
   if (opts.command === "scan") {
     mainScan(opts);
   } else if (opts.command === "scan-pack") {
     mainScanPack(opts);
-  } else {
+  } else if (opts.command === "scan-catalog") {
     mainScanCatalog(opts);
+  } else {
+    mainScanSkills(opts);
   }
 }
 

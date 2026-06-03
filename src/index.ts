@@ -24,6 +24,15 @@ export {
 export { RULES } from "./rules.js";
 export { CATALOG_RULES, S_MCP_001, S_MCP_002 } from "./catalog-rules.js";
 export { PACK_DOMAIN_RULES, S_DOM_001 } from "./pack-domain-rules.js";
+export { SKILL_RULES, S_SKL_001, isWriteClassOp } from "./skill-rules.js";
+export { scanSkill, scanPackSkills } from "./skill-scanner.js";
+export {
+  parseSkillManifest,
+  parseSkillImports,
+  splitFrontmatter,
+  skillSlug,
+  flattenServiceOps,
+} from "./skill-parser.js";
 export {
   scanCatalogEntry,
   scanCatalogEntries,
@@ -56,6 +65,11 @@ export type {
   ScanResult,
   SealedPayload,
   Severity,
+  SkillImportEntry,
+  SkillManifest,
+  SkillRule,
+  SkillScanContext,
+  SkillScanResult,
   StructuralContext,
   ToolGranularity,
 } from "./types.js";

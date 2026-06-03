@@ -120,6 +120,16 @@ The scanner ships with a bundled threat corpus of ~30 curated entries covering j
 
 Rules use stable IDs (`SINJ-NNN`, `SCLN-NNN`, `STHR-NNN`) for use in exception files and scan reports.
 
+### Skill contract (S-SKL) — DD-370
+
+Lints skill `.md` manifests against the DD-344 v4.5 contract by pairing each pack.yaml `skills[].import` entry with its skill source (the dual import + frontmatter surface). Run via `scan-skills`.
+
+| ID | Name | Severity | What it catches |
+|----|------|----------|-----------------|
+| S-SKL-001 | Skill manifest missing v4.5 contract field | warning | A declared **write-class** op (`create`/`send`/`*_set`/`*_control`/`create_adjustment`/…) with no `risk_class` entry (→ no DD-280 two-gate gate); a **user-content reader** with no `domain_access` (→ no DD-278 scope ACL); an `op://`-resolving body with no `sealed_credentials`; a handoff-emitting body (`+/handoff/`, `{{track.}}`) with no `track_emits` (→ no DD-245 audit trail). |
+
+S-SKL-001 ships **warning-only** (non-blocking) per DD-370 OQ-1 — promote to `error` at DD-370 Phase D (post-EA marketplace cutover) by flipping the rule severity. The write-class detector is name-based and biased toward catching writes: a false-positive is a non-blocking nudge to declare `risk_class`; a false-negative would let a real mutation ship ungated.
+
 ## CLI usage
 
 ### Scan a sealed payload
@@ -139,13 +149,24 @@ stallari-secops-scanner scan-pack pack.yaml --threats custom-threats.json  # ove
 stallari-secops-scanner scan-pack pack.yaml --json
 ```
 
+### Lint skill manifests (S-SKL-001, DD-370)
+
+```sh
+stallari-secops-scanner scan-skills ./packs/saas-revenue-ops   # one pack (pack.yaml + skills/)
+stallari-secops-scanner scan-skills ./packs                    # every pack under a parent dir
+stallari-secops-scanner scan-skills ./packs --json
+stallari-secops-scanner scan-skills ./packs --strict           # warnings → exit 1 (Phase D, post-EA)
+```
+
+Warning-only by default — `scan-skills` exits `0` even with warnings so it can wire into `make validate` without breaking the build (DD-370 OQ-1). `--strict` flips warnings to exit `1` for the future Phase D blocking promotion.
+
 ### Exit codes
 
 | Code | Meaning |
 |------|---------|
-| 0 | **Pass** — no findings (or all findings excepted) |
-| 1 | **Fail** — critical or high severity findings |
-| 2 | **Warn** — medium or low severity findings only |
+| 0 | **Pass** — no findings (or all findings excepted). For `scan-skills`: also warnings, unless `--strict` |
+| 1 | **Fail** — critical/high findings (`scan`/`scan-pack`); error findings or `--strict` warnings (`scan-skills`) |
+| 2 | **Warn** — medium/low (`scan`/`scan-pack`) or warning-only (`scan-catalog`) |
 
 ### Exceptions
 
